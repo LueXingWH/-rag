@@ -1,0 +1,176 @@
+{
+  "description": "离线评测集：覆盖直问、改写、跨文档多跳、以及必须拒答的题。gold_source 为期望命中的文档。",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "q01",
+      "question": "推免的综合成绩是由哪几部分构成的？各占多少比例？",
+      "gold_source": "01-推免保研管理办法.md",
+      "answerable": true,
+      "must_include": ["70%", "20%", "10%"],
+      "category": "direct"
+    },
+    {
+      "id": "q02",
+      "question": "普通专业学生申请保研，专业排名要求是多少？",
+      "gold_source": "01-推免保研管理办法.md",
+      "answerable": true,
+      "must_include": ["30%"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "q03",
+      "question": "挂科之后重修通过了，还能不能申请推免？",
+      "gold_source": "01-推免保研管理办法.md",
+      "answerable": true,
+      "must_include": ["不能", "不及格"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "q04",
+      "question": "国家奖学金的金额和成绩排名要求是什么？",
+      "gold_source": "02-奖学金助学金管理办法.md",
+      "answerable": true,
+      "must_include": ["8000", "前10%"],
+      "category": "direct"
+    },
+    {
+      "id": "q05",
+      "question": "家里经济困难能申请哪些资助？助学金什么时候截止申请？",
+      "gold_source": "02-奖学金助学金管理办法.md",
+      "answerable": true,
+      "must_include": ["4400", "9月30日"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "q06",
+      "question": "在实验室的 GPU 工作站上跑训练最长能跑多久？显存占用有什么限制？",
+      "gold_source": "03-实验室安全与设备规范.md",
+      "answerable": true,
+      "must_include": ["12", "20GB"],
+      "category": "direct"
+    },
+    {
+      "id": "q07",
+      "question": "门禁卡可以借给同学用吗？连续多久不去实验室会被冻结权限？",
+      "gold_source": "03-实验室安全与设备规范.md",
+      "answerable": true,
+      "must_include": ["严禁转借", "30天"],
+      "category": "direct"
+    },
+    {
+      "id": "q08",
+      "question": "本科生最多能借几本书，借期多久？",
+      "gold_source": "04-图书馆资源与服务指南.md",
+      "answerable": true,
+      "must_include": ["15", "30天"],
+      "category": "direct"
+    },
+    {
+      "id": "q09",
+      "question": "在学校外面怎么用图书馆的知网和 IEEE 数据库？",
+      "gold_source": "04-图书馆资源与服务指南.md",
+      "answerable": true,
+      "must_include": ["VPN"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "q10",
+      "question": "参加挑战杯拿了国家级一等奖，能拿多少奖金、能认定多少创新学分？",
+      "gold_source": "05-学科竞赛管理办法.md",
+      "answerable": true,
+      "must_include": ["20000", "4学分"],
+      "category": "direct"
+    },
+    {
+      "id": "q11",
+      "question": "竞赛的发票开成个人抬头能报销吗？报销有没有时间限制？",
+      "gold_source": "05-学科竞赛管理办法.md",
+      "answerable": true,
+      "must_include": ["不予报销", "30"],
+      "category": "direct"
+    },
+    {
+      "id": "q12",
+      "question": "期末考不及格补考考了 85 分，成绩单上算多少分？",
+      "gold_source": "06-选课考核与学籍规定.md",
+      "answerable": true,
+      "must_include": ["60"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "q13",
+      "question": "平均学分绩点是怎么算出来的？绩点低于多少会影响毕业？",
+      "gold_source": "06-选课考核与学籍规定.md",
+      "answerable": true,
+      "must_include": ["绩点", "2.0"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "q14",
+      "question": "宿舍能用的最大功率是多少？空调电费多少钱一度？",
+      "gold_source": "07-校园生活服务手册.md",
+      "answerable": true,
+      "must_include": ["2000W", "0.55"],
+      "category": "direct"
+    },
+    {
+      "id": "q15",
+      "question": "我想申请推免，需要准备哪些材料，什么时候提交？另外科研这块怎么计分？",
+      "gold_source": "01-推免保研管理办法.md",
+      "answerable": true,
+      "must_include": ["个人陈述", "6月"],
+      "category": "multi_hop"
+    },
+    {
+      "id": "q16",
+      "question": "国家奖学金和校级一等奖学金可以同时拿吗？",
+      "gold_source": "02-奖学金助学金管理办法.md",
+      "answerable": true,
+      "must_include": ["不再参评"],
+      "category": "multi_hop"
+    },
+    {
+      "id": "u01",
+      "question": "学校食堂的麻辣香锅一份多少钱？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "u02",
+      "question": "怎么申请国家助学贷款，需要什么担保人？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "u03",
+      "question": "学校游泳池的水温常年保持在多少度？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "u04",
+      "question": "量子计算机的退相干时间一般是多少？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "u05",
+      "question": "2026 年秋季学期什么时候开学？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "u06",
+      "question": "留学生的学费标准是多少钱一年？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    }
+  ]
+}
