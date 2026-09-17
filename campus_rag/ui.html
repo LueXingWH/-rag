@@ -77,7 +77,7 @@
   <div class="examples" id="examples"></div>
   <div id="feed"><div class="empty">输入一个问题，或点上面的示例开始 👆</div></div>
   <div class="askbar">
-    <input type="text" id="q" placeholder="例如：挂科重修后还能申请推免吗？" autocomplete="off">
+    <input type="text" id="q" placeholder="例如：南海校区宿舍晚上几点关门？" autocomplete="off">
     <button id="send">提问</button>
   </div>
   <div class="foot">零依赖 · 离线可运行 · 引用可溯源 · 置信度低于阈值自动拒答</div>
@@ -86,13 +86,14 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const EXAMPLES = [
-  "推免的综合成绩由哪几部分构成？",
-  "挂科重修后还能申请保研吗？",
-  "本科生最多能借几本书，借期多久？",
-  "在外面怎么用图书馆的知网？",
-  "实验室 GPU 工作站单次最长能跑多久？",
-  "挑战杯国家级一等奖有多少奖金？",
-  "学校食堂的麻辣香锅多少钱？"
+  "南海校区宿舍晚上几点关门？",
+  "旷课多少节会被警告处分？",
+  "哪种考试作弊会直接被开除？",
+  "对处分不服多久内能申诉？",
+  "南海校区电动车校园内行驶有什么要求？",
+  "医保门诊报销什么时候办理？",
+  "四六级听力广播频率是多少？",
+  "南海校区游泳池的开放时间是？"
 ];
 const MODE_LABEL = {llm:"大模型生成 · 严格接地", extractive:"离线抽取式降级", refusal:"拒答（证据不足）"};
 
