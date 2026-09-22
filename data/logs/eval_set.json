@@ -1,6 +1,6 @@
 {
-  "description": "离线评测集（南海校区语料版）：覆盖直问、改写、多跳，以及必须拒答的题。gold_source 为期望命中的文档。",
-  "version": "2.0",
+  "description": "离线评测集（南海校区语料版，v3.0）：22 题 = 16 可答 + 6 应拒答。覆盖直问、改写、多跳三类可答问题，以及必须拒答的题。gold_source 为期望命中的文档。出题原则见 docs/known-issues.md：只使用单份文档独有的事实，避免跨文档重复导致 Hit@1 不可判定。",
+  "version": "3.0",
   "cases": [
     {
       "id": "n01",
@@ -67,6 +67,70 @@
       "category": "direct"
     },
     {
+      "id": "n09",
+      "question": "住宿费里包了多少水电？用超了怎么算？",
+      "gold_source": "08-南海校区校规校纪问答.md",
+      "answerable": true,
+      "must_include": ["8 千瓦时", "4 立方水"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "n10",
+      "question": "有事要请假，最多能请多久？",
+      "gold_source": "08-南海校区校规校纪问答.md",
+      "answerable": true,
+      "must_include": ["6 周"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "n11",
+      "question": "学校的处分都有哪几档？",
+      "gold_source": "08-南海校区校规校纪问答.md",
+      "answerable": true,
+      "must_include": ["留校察看", "开除学籍"],
+      "category": "direct"
+    },
+    {
+      "id": "n12",
+      "question": "想调换宿舍，要什么时候去申请？",
+      "gold_source": "08-南海校区校规校纪问答.md",
+      "answerable": true,
+      "must_include": ["6 月份"],
+      "category": "paraphrase"
+    },
+    {
+      "id": "n13",
+      "question": "南海校区到石牌校区的交通车，学生能不能坐？",
+      "gold_source": "08-南海校区校规校纪问答.md",
+      "answerable": true,
+      "must_include": ["教职工", "学生证"],
+      "category": "multi_hop"
+    },
+    {
+      "id": "n14",
+      "question": "四六级报名要交多少钱？",
+      "gold_source": "09-南海校区通知公告问答.md",
+      "answerable": true,
+      "must_include": ["36 元"],
+      "category": "direct"
+    },
+    {
+      "id": "n15",
+      "question": "进四六级考场要带哪些证件？",
+      "gold_source": "09-南海校区通知公告问答.md",
+      "answerable": true,
+      "must_include": ["准考证", "学生证", "身份证"],
+      "category": "direct"
+    },
+    {
+      "id": "n16",
+      "question": "毕业生最晚什么时候要搬离宿舍？",
+      "gold_source": "09-南海校区通知公告问答.md",
+      "answerable": true,
+      "must_include": ["7 月 1 日", "7 月 5 日"],
+      "category": "paraphrase"
+    },
+    {
       "id": "nu01",
       "question": "南海校区游泳池的开放时间和收费标准是什么？",
       "gold_source": null,
@@ -76,6 +140,34 @@
     {
       "id": "nu02",
       "question": "2026 级新生军训从哪天开始？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "nu03",
+      "question": "学校有哪些学生社团？怎么加入？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "nu04",
+      "question": "南海校区有健身房吗？开放时间是什么时候？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "nu05",
+      "question": "补考没过的话最多能重修几次？",
+      "gold_source": null,
+      "answerable": false,
+      "category": "unanswerable"
+    },
+    {
+      "id": "nu06",
+      "question": "快递驿站的营业时间是几点到几点？",
       "gold_source": null,
       "answerable": false,
       "category": "unanswerable"

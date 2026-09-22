@@ -234,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--threshold", type=float, default=0.42, help="拒答置信度阈值（由 sweep.py 标定）")
     p.add_argument("--model", default="deepseek-flash", help="LLM 模型名（如 deepseek-flash / deepseek-v4-pro）")
     p.add_argument("--json", action="store_true", help="以 JSON 输出（便于脚本调用）")
-    p.add_argument("--out", default=None, help="评测报告输出路径")
+    p.add_argument("--out", default=str(ROOT / "data" / "logs" / "eval_report.json"), help="评测报告输出路径")
     p.add_argument("--quiet", action="store_true", help="评测只输出汇总，不打逐题明细")
     p.add_argument("--no-trace", action="store_true", help="不打印检索轨迹")
     p.add_argument("--host", default="127.0.0.1")
