@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--embeddings", action="store_true", help="启用语义向量检索（需 embedding key）")
     p.add_argument("--offline", action="store_true", help="强制离线：不调用任何网络接口")
     p.add_argument("--corpus", default=str(ROOT / "data" / "corpus"), help="语料目录")
-    p.add_argument("--eval-set", default=str(ROOT / "data" / "eval_set.json"), help="评测集路径")
+    p.add_argument("--eval-set", default=str(ROOT / "data" / "logs" / "eval_set.json"), help="评测集路径")
     p.add_argument("--eval-k", type=int, default=3, help="评测的 K 值")
     p.add_argument("--top-k", type=int, default=4, help="召回块数")
     p.add_argument("--chunk-size", type=int, default=480, help="分块最大字数")

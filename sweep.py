@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", default=str(ROOT / "data" / "corpus"))
-    ap.add_argument("--eval-set", default=str(ROOT / "data" / "eval_set.json"))
+    ap.add_argument("--eval-set", default=str(ROOT / "data" / "logs" / "eval_set.json"))
     ap.add_argument("--coarse", action="store_true")
     args = ap.parse_args()
 

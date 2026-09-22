@@ -234,9 +234,10 @@ my__ai/
 │   ├── web.py / ui.html      # 标准库 Web Demo
 │   └── evaluate.py           # 指标与报告
 └── data/
-    ├── corpus/               # 7 篇示例语料（换成你自己的即可）
-    ├── eval_set.json         # 22 题评测集（16 可答 + 6 应拒答）
-    └── eval_report.json      # 最近一次评测结果（含逐题明细）
+    ├── corpus/               # 示例语料（换成你自己的即可）
+    └── logs/
+        ├── eval_set.json     # 22 题评测集（16 可答 + 6 应拒答）
+        └── eval_report.json  # 最近一次评测结果（含逐题明细）
 ```
 
 ---

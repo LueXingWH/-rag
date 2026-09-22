@@ -58,7 +58,7 @@ def fact_stats(engine: RagEngine, cases, threshold: float) -> dict:
 
 def main() -> int:
     chunks = load_corpus(str(ROOT / "data" / "corpus"))
-    cases = load_eval_set(ROOT / "data" / "eval_set.json")
+    cases = load_eval_set(ROOT / "data" / "logs" / "eval_set.json")
 
     print("【实验一】抽取式候选块数（阈值 0.42 / evidence_k=5，与 config 默认一致）")
     base = Config.from_env(answer_threshold=0.42, evidence_k=5, use_llm=False)

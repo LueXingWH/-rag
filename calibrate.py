@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parent
 def main() -> int:
     ap = argparse.ArgumentParser(description="拒答阈值标定")
     ap.add_argument("--corpus", default=str(ROOT / "data" / "corpus"))
-    ap.add_argument("--eval-set", default=str(ROOT / "data" / "eval_set.json"))
+    ap.add_argument("--eval-set", default=str(ROOT / "data" / "logs" / "eval_set.json"))
     ap.add_argument("--llm", action="store_true", help="只是用于确认闸门在 LLM 之前生效")
     args = ap.parse_args()
 
