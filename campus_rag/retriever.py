@@ -20,7 +20,10 @@ from .text import char_ngrams, token_counts, tokenize
 
 # 轻量同义词/缩写扩展：零依赖、可解释、可手改。生产环境应换成向量召回或同义词表服务。
 # 注意作用范围：扩展查询只作为**额外的低权重排名**参与 RRF 融合（weight=0.4），
-# 它提高召回但不会改变主排序；拒答置信度也**不使用**扩展结果，避免"自己给自己加证据"。
+# 它提高召回但不会改变主排序。
+# 置信度为什么不会被"扩展词"灌水：_confidence 只统计**原始查询词**的 IDF 覆盖率
+# （用的是 last_query_tokens，扩展词不在其中），所以扩展词不会给自己加证据。
+# 它仍会通过融合排序影响"哪些块进入证据集"——这一点是刻意的，也是可解释的。
 SYNONYMS: Dict[str, List[str]] = {
     "保研": ["推免", "免试攻读", "推荐免试"],
     "推免": ["保研", "免试攻读"],
@@ -49,12 +52,29 @@ SYNONYMS: Dict[str, List[str]] = {
 
 
 def expand_query(query: str) -> List[str]:
-    """返回同义词扩展后的补充查询串（用于并行检索后融合）。"""
+    """返回同义词扩展后的补充查询串（用于并行检索后融合）。
+
+    **必须按"子串"匹配，不能逐 token 查表。** 这是一个真实的 bug：
+    tokenize() 只产出 CJK bigram/unigram 与英文词，因此任何 3 字及以上的词条
+    （"多少钱""收费标准""申请条件"……）永远不可能等于某个 token，
+    逐 token 查表会让它们全部变成死代码——实测"四六级报名要交多少钱"扩展结果为空，
+    而"口语问法 -> 文档用词"恰恰是这张表存在的全部理由。
+    子串匹配与分词结果解耦，长短词条一视同仁，且天然覆盖了原来的 token 匹配（超集）。
+    """
+    q = (query or "").lower()
+    if not q:
+        return []
     extra: List[str] = []
-    toks = tokenize(query, drop_stopwords=False)
-    for t in toks:
-        for syn in SYNONYMS.get(t, []):
-            extra.append(syn)
+    seen = set()
+    # 长词条优先：多个词条同时命中时，长词条（更具体）的扩展排前面；
+    # 只按顺序拼接，不调权重，保持"扩展只加召回、不改主排序"的语义。
+    for key in sorted(SYNONYMS, key=len, reverse=True):
+        if key not in q:
+            continue
+        for syn in SYNONYMS[key]:
+            if syn not in seen:
+                seen.add(syn)
+                extra.append(syn)
     if not extra:
         return []
     return [" ".join(extra)]

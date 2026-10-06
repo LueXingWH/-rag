@@ -75,6 +75,11 @@ def load_eval_set(path: str | Path) -> List[Dict[str, Any]]:
 
 
 def _term_coverage(answer: str, must_include: List[str]) -> tuple[float, List[str]]:
+    """词面覆盖率：答案里出现了多少条期望关键事实。
+
+    注意它**只适用于"真正作答了"的文本**。拒答文本里带着候选片段（见 run_eval），
+    直接拿它来算覆盖率，等于让拒绝回答的题靠"引用了包含答案的片段"拿满分。
+    """
     if not must_include:
         return 1.0, []
     normalized = answer.replace(" ", "").lower()
@@ -106,8 +111,17 @@ def run_eval(
                     rank = idx
                     break
 
-        coverage, missing = _term_coverage(ans.answer, case.get("must_include") or [])
         refusal = ans.mode == "refusal"
+        must_include = case.get("must_include") or []
+        if refusal:
+            # 拒答不算覆盖：拒答正文里会原样引用检索到的候选片段
+            # （"...我检索到的、可能相关的片段如下：[候选1] ...8 千瓦时..."），
+            # 若直接在拒答文本上做词面匹配，反而会给"该答却拒答"的题记满分——
+            # 实测 n09/n11/n14 三条该答却拒答的题覆盖率全是 100%，
+            # 把关键事实覆盖率从真实值抬到 81.2%。拒答就是没答，计 0。
+            coverage, missing = 0.0, list(must_include)
+        else:
+            coverage, missing = _term_coverage(ans.answer, must_include)
 
         cr = CaseResult(
             id=case.get("id", f"case{i}"),

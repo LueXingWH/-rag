@@ -128,24 +128,55 @@ def cmd_ask(engine: RagEngine, args: argparse.Namespace) -> int:
     return 0
 
 
+CHAT_HELP = "输入问题开始问答；:q 退出，:s 开关检索详情，:h 帮助。"
+
+
+def parse_chat_command(line: str) -> str:
+    """把交互模式的一行输入解析成动作：quit / help / toggle_trace / empty / ask。
+
+    单独抽成纯函数是为了可测：原来这里写成 `q.startswith(":s") or True`——
+    恒真表达式，于是 :s 既不是命令（会被整串丢去检索），trace 也永远开着。
+    命令解析必须能被单元测试直接盯住，而不是靠人肉敲键盘验证。
+    """
+    cmd = (line or "").strip()
+    if not cmd:
+        return "empty"
+    if cmd in {":q", ":quit", "exit", "quit"}:
+        return "quit"
+    if cmd in {":h", ":help", "help", "?"}:
+        return "help"
+    if cmd in {":s", ":trace", ":detail"}:
+        return "toggle_trace"
+    return "ask"
+
+
 def cmd_chat(engine: RagEngine, args: argparse.Namespace) -> int:
     print(BANNER)
     print(f"已加载 {len(engine.chunks)} 个知识块，语料目录：{engine.cfg.corpus_dir}")
-    print("输入问题开始问答；:q 退出，:s 查看检索详情。\n")
+    print(CHAT_HELP + "\n")
+    show_trace = True
     while True:
         try:
             q = input("你 > ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n再见！")
             return 0
-        if not q:
+        action = parse_chat_command(q)
+        if action == "empty":
             continue
-        if q in {":q", ":quit", "exit", "quit"}:
+        if action == "quit":
             print("再见！")
             return 0
+        if action == "help":
+            print(CHAT_HELP)
+            continue
+        if action == "toggle_trace":
+            show_trace = not show_trace
+            print(f"[提示] 检索详情已{'开启' if show_trace else '关闭'}。")
+            continue
         ans = engine.answer(q)
         log_answer(ans.to_dict(), extra={"channel": "cli"})
-        print(render_answer(ans, show_trace=q.startswith(":s") or True))
+        print(render_answer(ans, show_trace=show_trace))
 
 
 def cmd_eval(engine: RagEngine, args: argparse.Namespace) -> int:
