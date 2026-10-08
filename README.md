@@ -30,6 +30,7 @@ python calibrate.py                   # 只看拒答阈值的扫描曲线
 
 # ② 联网增强（可选：检索结果交给大模型组织成自然语言）
 $env:DEEPSEEK_API_KEY = "sk-xxxx"     # 见下方"可选增强"
+python ask.py --check-llm --llm       # 先自检：真发一次请求，报错会带完整诊断
 python ask.py --web --llm
 ```
 
@@ -181,6 +182,20 @@ python ask.py --llm --model deepseek-v4-pro    # 换更强的模型
   加 `--offline`（或设 `CAMPUS_RAG_OFFLINE=1`）时自检会**跳过**，一个网络请求都不发。
 - Web 页面右上角的"大模型生成"徽章显示的是**真实开关**，关着时会直接写明原因
   （`未配置 API key` / `未加 --llm` / `强制离线`），不会再出现"徽章说开、回答却降级"的矛盾。
+- **思维链默认关闭（`llm_thinking="disabled"`），这是刻意的**：DeepSeek V4 的 thinking
+  **默认开启**且 effort 默认 `high`，思维链走 `reasoning_content`、答案走 `content`；
+  而本项目 `max_tokens=700` 是留给"结论 + 依据"的，思维链一开就把它吃光，
+  `content` 返回空串。另外 thinking 模式下 `temperature` 会被**静默忽略**——
+  等于本项目设的 `temperature=0.2` 从来没生效过。
+  想开回来：`CAMPUS_RAG_THINKING=enabled`（不认这个扩展字段的第三方网关设 `omit`）。
+- **真出问题时跑这条**：
+  ```powershell
+  python ask.py --check-llm --llm
+  ```
+  它会**真的发一次请求**并打印 `finish_reason` / token 用量 / 思维链长度 / 正文。
+  和 `--info` 的区别：`--info` 只调 `GET /models`，那只证明 **key 有效**，不证明**能拿到答案**。
+- 大模型调用**失败不会白屏**：自动降级为离线摘录，答案和引用照常给，
+  底部如实标注原因（例：`⚠️ 大模型调用失败，已自动降级为离线摘录…`）。
 
 ### 6.2 语义向量通道（解决"大白话提问"漏答）
 

@@ -336,3 +336,73 @@ const llm = (d.config.llm_api_key ? "已配 key" : "未配 key");   // ← 只�
 （含两条形态断言：`ui.html` 不许再出现 `config.llm_api_key`；payload 里不许再有这个字段）。
 实测 `/api/info`：`llm_enabled=false`、`llm_reason="未加 --llm"`。
 
+---
+
+## 补修｜bug 8：接了 API 却报"LLM 返回空内容"（用户实际报的故障）
+
+**用户原话**："用api后提示服务端错误，LLM返回空内容"。
+这一条查下来是**三个叠在一起的缺陷**，其中第三个才是"服务端错误"这四个字的来源。
+
+### 8.1 思维链把 max_tokens 吃光了（根因）
+
+DeepSeek V4 的 **thinking 模式默认开启，且 effort 默认 `high`**（[官方文档](https://api-docs.deepseek.com/guides/thinking_mode)）。
+思维链走 `reasoning_content`，答案走 `content`——**两个字段**。
+本项目 `max_tokens=700` 是给"先给结论（2-4 句），再给依据"留的预算；
+思维链一开，700 全花在推理上，`content` 返回空串。
+
+更隐蔽的一点：官方文档明确写着 **thinking 模式不支持 `temperature`**，
+"设置这些参数不会报错、但也不会生效"。也就是说本项目刻意设的 `temperature=0.2`
+（接地、低方差）在这条路径上**从来没生效过**——又是一个"配置说一套、运行时另一套"。
+
+**处理**：新增 `llm_thinking`（默认 `"disabled"`，可用 `CAMPUS_RAG_THINKING` 覆盖；
+第三方网关可设 `omit` 表示完全不发这个扩展字段）。RAG 答案组织用的是**给定材料**，
+不需要模型自己推演，关掉它同时赢回 `temperature`、延迟和成本。
+
+### 8.2 `config.py` 里的生成参数从来没传下去
+
+```python
+llm = LLMClient(cfg.llm_base_url, cfg.llm_api_key, cfg.llm_model, cfg.llm_timeout)   # 修前
+```
+
+`LLMClient` 的 `temperature` / `max_tokens` 有各自的默认值（恰好也是 0.2 / 700），
+于是**改了 `config.py` 里的值完全不生效**。这条特别气人：用户看到"答案被截断"，
+第一反应就是去把 `max_tokens` 调大——**改了，没用**。
+现在三个参数都从 `cfg` 显式传入，并有测试盯住。
+
+### 8.3 前端把**已经降级好的答案**整条丢了（"服务端错误"的来源）
+
+`ui.html` 的 `ask()`：
+
+```js
+if(d.error){ ...只渲染"服务端错误：LLM 返回空内容"... }   // 修前
+```
+
+服务端此时返回的是**完整 payload**：`mode=extractive`、232 字的抽取式答案、4 条引用，
+外加一个 `error` 字段说明为什么降级。前端却因为 `error` 非空，把答案和引用全丢了。
+**这正好砸掉本项目最核心的承诺——"永不白屏"**：LLM 挂了，答案本该照给。
+
+**处理**：判据改成 `if(!d.answer)`——只有**真的没有答案**才算服务端错误；
+降级走正常的卡片渲染，由 `⚠️ 大模型调用失败，已自动降级为离线摘录（下面的答案照样可用、可核对）` 如实标注。
+
+### 8.4 顺带：把那六个字换成能照着修的一句话
+
+原来 `LLM 返回空内容` 是全部信息。现在同一个故障会打印（**实测输出**）：
+
+```
+LLM 返回空内容（finish_reason=length｜思维链 420 字｜输出 tokens 700（输入 1800））
+→ 思维链占满了 max_tokens，答案还没开始写就被截断。
+   建议：关掉 thinking（CAMPUS_RAG_THINKING=disabled …），或把 max_tokens 调大
+```
+
+判断逻辑放在 `llm._empty_content_error()`，`finish_reason` / 思维链长度 / 用量都会被读，
+而且**建议随证据变**（没有思维链的纯截断，就不会再去劝你关 thinking——那属于误导）。
+
+新增 `python ask.py --check-llm`：真的发一次请求，打印 `finish_reason` / usage /
+思维链长度 / 正文预览。**`--info` 只调 `GET /models`，那只证明 key 有效，不证明能拿到答案**——
+这次的故障恰好卡在这条缝里。
+
+**验证方式**：写了一个假上游（按脚本返回 `content=""` + `finish_reason=length` + 420 字思维链），
+实测三件事——① 真实请求体结尾是 `"thinking": {"type": "disabled"}`；
+② 空内容时用户仍拿到 232 字答案 + 4 条引用；③ `/api/ask` 的 `answer` 与 `error` 同时存在。
+`tests/test_regressions.py` 增至 **34 条**（`LlmEmptyContentTest` / `CheckLlmCommandTest` / `UiDegradeTest`）。
+
