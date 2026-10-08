@@ -83,6 +83,15 @@ class Config:
     llm_api_key: str = ""
     llm_timeout: float = 60.0
     use_llm: bool = True
+    # 思维链（thinking）开关：enabled / disabled / omit。
+    # **默认必须关**，这是被一个真实故障逼出来的：DeepSeek V4 的 thinking 默认**开启**
+    # 且 effort 默认 high，思维链走 reasoning_content、答案走 content。
+    # 本项目 max_tokens=700 是给"结论 + 依据"留的，思维链一开就会被它吃光，
+    # 于是 content 返回空串 → 用户看到"LLM 返回空内容"。
+    # 另外 thinking 模式下 temperature 是被**静默忽略**的（官方文档明说）——
+    # 那就等于本项目刻意设的 temperature=0.2 从来没生效过。
+    # omit：完全不发这个字段，给不认 DeepSeek 扩展字段的第三方网关用。
+    llm_thinking: str = "disabled"
     # --- 语义向量通道（可选） ---
     embed_base_url: str = "https://api.siliconflow.cn/v1"
     embed_model: str = "BAAI/bge-m3"
@@ -108,6 +117,8 @@ class Config:
             "llm_base_url": ("CAMPUS_RAG_BASE_URL", "DEEPSEEK_BASE_URL", "OPENAI_BASE_URL"),
             "llm_model": ("CAMPUS_RAG_MODEL", "DEEPSEEK_MODEL", "OPENAI_MODEL"),
             "llm_api_key": ("CAMPUS_RAG_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"),
+            # 思维链开关也走环境变量：报错信息里会建议这一条，就必须真的能被设置
+            "llm_thinking": ("CAMPUS_RAG_THINKING", "DEEPSEEK_THINKING"),
             "embed_base_url": ("CAMPUS_RAG_EMBED_BASE_URL", "SILICONFLOW_BASE_URL"),
             "embed_model": ("CAMPUS_RAG_EMBED_MODEL",),
             "embed_api_key": ("CAMPUS_RAG_EMBED_API_KEY", "SILICONFLOW_API_KEY"),

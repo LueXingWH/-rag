@@ -27,7 +27,7 @@ import ask  # noqa: E402
 from ask import parse_chat_command  # noqa: E402
 from bench import fact_stats  # noqa: E402
 from campus_rag.config import Config, llm_disabled_reason, offline_requested  # noqa: E402
-from campus_rag.engine import Answer  # noqa: E402
+from campus_rag.engine import Answer, RagEngine  # noqa: E402
 from campus_rag.evaluate import run_eval  # noqa: E402
 from campus_rag.llm import LLMError  # noqa: E402
 from campus_rag.retriever import SYNONYMS, expand_query  # noqa: E402
@@ -367,6 +367,203 @@ class LlmStatusTest(unittest.TestCase):
         self.assertEqual(
             ask.llm_status_hint(argparse.Namespace(llm=False), self._cfg("", False), offline=False), ""
         )
+
+
+class LlmEmptyContentTest(unittest.TestCase):
+    """bug：`LLM 返回空内容` 六个字把所有人挡住了（用户实际报的故障）。
+
+    DeepSeek V4 的 thinking **默认开启**且 effort=high，思维链走 reasoning_content、
+    答案走 content；本项目 max_tokens=700 是留给"结论+依据"的，思维链一开就吃光，
+    于是 content 为空 → 前端只显示一句"服务端错误：LLM 返回空内容"。
+    更糟的是前端当时把整条**已经降级好的抽取式答案**丢掉了（见 UiDegradeTest）。
+
+    这里把上游响应造出来，断言：默认不带 thinking、空正文会抛出**可照着修**的错误。
+    """
+
+    def _client(self, **kw):
+        from campus_rag.llm import LLMClient
+
+        kw.setdefault("thinking", "disabled")
+        return LLMClient("https://api.deepseek.com", "sk-dummy", "deepseek-flash", **kw)
+
+    def test_thinking_is_disabled_by_default(self) -> None:
+        payload = self._client().build_payload("s", "u")
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+
+    def test_thinking_can_be_enabled_or_omitted(self) -> None:
+        self.assertEqual(self._client(thinking="enabled").build_payload("s", "u")["thinking"],
+                         {"type": "enabled"})
+        # omit：不认厂商扩展字段的第三方网关走这条路
+        self.assertNotIn("thinking", self._client(thinking="omit").build_payload("s", "u"))
+
+    def test_empty_content_raises_actionable_error(self) -> None:
+        """思维链吃光 max_tokens 的典型响应：content 为空、finish_reason=length。"""
+        from campus_rag.llm import LLMError
+
+        response = {
+            "model": "deepseek-flash",
+            "choices": [{
+                "finish_reason": "length",
+                "message": {"content": "", "reasoning_content": "让我先想想这个问题的……" * 40},
+            }],
+            "usage": {"prompt_tokens": 1800, "completion_tokens": 700},
+        }
+        with mock.patch("campus_rag.llm._post_json", return_value=response):
+            with self.assertRaises(LLMError) as ctx:
+                self._client().chat("s", "u")
+        msg = str(ctx.exception)
+        self.assertIn("LLM 返回空内容", msg)
+        self.assertIn("finish_reason=length", msg)   # 原因
+        self.assertIn("思维链", msg)                  # 证据
+        self.assertIn("700", msg)                     # 用量
+        self.assertIn("max_tokens", msg)              # 能照着修的出路
+
+    def test_plain_truncation_gets_different_advice(self) -> None:
+        """没有思维链、单纯被截断：建议不该再提 thinking，否则就是误导。"""
+        from campus_rag.llm import LLMError
+
+        response = {"choices": [{"finish_reason": "length", "message": {"content": "  "}}],
+                    "usage": {"completion_tokens": 42}}
+        with mock.patch("campus_rag.llm._post_json", return_value=response):
+            with self.assertRaises(LLMError) as ctx:
+                self._client().chat("s", "u")
+        self.assertIn("max_tokens", str(ctx.exception))
+        self.assertNotIn("建议：关掉 thinking", str(ctx.exception))
+
+    def test_normal_answer_reports_finish_reason_and_reasoning(self) -> None:
+        response = {"model": "deepseek-flash", "choices": [{"finish_reason": "stop",
+                   "message": {"content": "可用", "reasoning_content": "12345"}}],
+                   "usage": {"completion_tokens": 3}}
+        with mock.patch("campus_rag.llm._post_json", return_value=response):
+            res = self._client().chat("s", "u")
+        self.assertEqual(res.text, "可用")
+        self.assertEqual(res.finish_reason, "stop")
+        self.assertEqual(res.reasoning_chars, 5)
+
+    def test_build_engine_passes_generation_params(self) -> None:
+        """config 里的 temperature / max_tokens / thinking 必须真的传到客户端。
+
+        原先 build_engine 只传了前四个位置参数，于是 config.temperature 和
+        config.max_tokens 从来没生效——用户想靠调 max_tokens 解决截断，改了也没用。
+        """
+        captured = {}
+
+        class _Capture:
+            def __init__(self, *args, **kwargs):
+                captured["args"] = args
+                captured["kwargs"] = kwargs
+
+        cfg = Config()
+        cfg.llm_api_key = "sk-dummy"
+        cfg.use_llm = True
+        cfg.temperature = 0.7
+        cfg.max_tokens = 1234
+        cfg.llm_thinking = "enabled"
+        with mock.patch("ask.LLMClient", _Capture), \
+             mock.patch("ask.Config") as cfg_cls, \
+             mock.patch("ask.load_corpus", return_value=[SimpleNamespace(source="a.md")]), \
+             mock.patch("ask.RagEngine"):
+            cfg_cls.from_env.return_value = cfg
+            cfg_cls.from_env.side_effect = None
+            # build_engine 会顺手打印启动提示，测试里静音，别污染测试输出
+            with contextlib.redirect_stdout(io.StringIO()):
+                ask.build_engine(argparse.Namespace(
+                    corpus="x", top_k=4, chunk_size=480, threshold=0.42, evidence_k=5,
+                    llm=True, embeddings=False, offline=False, model="deepseek-flash",
+                    extractive_chunks=None, info=False, check_llm=False,
+                ))
+        self.assertEqual(captured["kwargs"]["temperature"], 0.7)
+        self.assertEqual(captured["kwargs"]["max_tokens"], 1234)
+        self.assertEqual(captured["kwargs"]["thinking"], "enabled")
+
+
+class CheckLlmCommandTest(unittest.TestCase):
+    """`--check-llm`：把"能拿到答案吗"的原始证据打出来，而不是只证明 key 有效。"""
+
+    def _engine(self, llm):
+        cfg = Config()
+        cfg.llm_api_key = "sk-dummy"
+        cfg.use_llm = True
+        return SimpleNamespace(cfg=cfg, llm=llm, chunks=[SimpleNamespace(source="a.md")])
+
+    def _run(self, engine, **ns) -> tuple:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = ask.cmd_check_llm(engine, argparse.Namespace(offline=False, **ns))
+        return rc, buf.getvalue()
+
+    def test_reports_full_diagnostics_on_success(self) -> None:
+        from campus_rag.llm import LLMResult
+
+        class _Ok:
+            def list_models(self): return ["deepseek-flash"]
+            def chat(self, s, u):
+                return LLMResult(text="可用", mode="llm", model="deepseek-flash",
+                                 latency_ms=7, finish_reason="stop", reasoning_chars=0,
+                                 usage={"completion_tokens": 3})
+
+        rc, out = self._run(self._engine(_Ok()))
+        self.assertEqual(rc, 0)
+        for token in ("finish_reason", "usage", "思维链长度", "可用"):
+            self.assertIn(token, out)
+
+    def test_surfaces_the_real_reason_when_it_fails(self) -> None:
+        from campus_rag.llm import LLMError
+
+        class _Boom:
+            def list_models(self): return ["deepseek-flash"]
+            def chat(self, s, u):
+                raise LLMError("LLM 返回空内容（finish_reason=length｜思维链 1600 字）→ 建议：关掉 thinking")
+
+        rc, out = self._run(self._engine(_Boom()))
+        self.assertEqual(rc, 1)
+        self.assertIn("finish_reason=length", out)   # 原因透传，不被吞掉
+        self.assertIn("思维链", out)
+
+    def test_skips_cleanly_when_llm_disabled(self) -> None:
+        rc, out = self._run(SimpleNamespace(cfg=self._engine(None).cfg, llm=None, chunks=[]))
+        self.assertEqual(rc, 1)
+        self.assertIn("跳过", out)
+
+
+class UiDegradeTest(unittest.TestCase):
+    """bug：前端只要看到 error 字段，就把**已经降级好的答案**整条丢掉。
+
+    服务端明明返回了完整的抽取式答案 + 引用来源（这正是"永不白屏"的设计），
+    前端却只显示"服务端错误：LLM 返回空内容"——用户不但没看到原因，连答案都没了。
+    修法：只有"真的没有 answer"才算服务端错误；降级走 renderCard，如实标注。
+    """
+
+    def test_ui_keeps_degraded_answer(self) -> None:
+        ui = (ROOT / "campus_rag" / "ui.html").read_text(encoding="utf-8")
+        self.assertIn("if(!d.answer)", ui)          # 判据改成"有没有答案"
+        self.assertNotIn("if(d.error){ document", ui)  # 旧的短路口不许回来
+
+    def test_engine_still_returns_answer_on_llm_failure(self) -> None:
+        """行为断言：LLM 抛错时，Answer 必须同时带 answer 和 error。"""
+        from campus_rag.llm import LLMError
+
+        class _Boom:
+            def chat(self, s, u): raise LLMError("LLM 返回空内容（finish_reason=length）")
+
+        cfg = Config()
+        cfg.use_llm = True
+        cfg.answer_threshold = 0.0   # 保证不被闸门拦住，走到生成那一步
+        engine = RagEngine([_chunk()], config=cfg, llm=_Boom())
+        ans = engine.answer("宿舍几点关门")
+        self.assertEqual(ans.mode, "extractive")
+        self.assertTrue(ans.answer.strip())          # 答案在
+        self.assertIn("LLM 返回空内容", ans.error)    # 原因也在
+
+
+def _chunk():
+    from campus_rag.data import Chunk
+
+    return Chunk(
+        chunk_id="c0", source="08-测试.md", title="测试", heading="测试 > 宿舍",
+        text="宿舍大门每日 06:00 开；周日至周四 23:00 关门熄灯。迟归须登记。",
+        position=0,
+    )
 
 
 if __name__ == "__main__":

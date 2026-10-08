@@ -79,8 +79,8 @@ def llm_status_hint(args: argparse.Namespace, cfg: Config, offline: bool) -> str
 
 
 def _announce_llm_status(args: argparse.Namespace, cfg: Config) -> None:
-    """把 llm_status_hint 打到屏幕上。--info 有自己的详细版，避免两处重复。"""
-    if getattr(args, "info", False):
+    """把 llm_status_hint 打到屏幕上。--info / --check-llm 有自己的详细版，避免重复。"""
+    if getattr(args, "info", False) or getattr(args, "check_llm", False):
         return
     hint = llm_status_hint(args, cfg, offline=bool(getattr(args, "offline", False)) or offline_requested())
     if hint:
@@ -110,7 +110,22 @@ def build_engine(args: argparse.Namespace) -> RagEngine:
     if not chunks:
         raise SystemExit(f"语料为空：{cfg.corpus_dir}。请放入 .md/.txt 文件。")
 
-    llm = LLMClient(cfg.llm_base_url, cfg.llm_api_key, cfg.llm_model, cfg.llm_timeout) if cfg.use_llm else None
+    # 注意：这里必须把 cfg 的生成参数**真的传进去**。原先只传了前四个参数，
+    # 于是 config.py 里的 temperature / max_tokens 从来没生效过——
+    # 用户在配置里调 max_tokens 想解决"答案被截断"，改了个寂寞。
+    llm = (
+        LLMClient(
+            cfg.llm_base_url,
+            cfg.llm_api_key,
+            cfg.llm_model,
+            cfg.llm_timeout,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
+            thinking=cfg.llm_thinking,
+        )
+        if cfg.use_llm
+        else None
+    )
     embedder = (
         EmbeddingClient(cfg.embed_base_url, cfg.embed_api_key, cfg.embed_model)
         if cfg.use_embeddings
@@ -278,6 +293,7 @@ def cmd_info(engine: RagEngine, args: argparse.Namespace) -> int:
     print("\n【提示】")
     print("  离线演示： python ask.py --web            （无需网络，必不翻车）")
     print("  联网增强： $env:DEEPSEEK_API_KEY='sk-xxx'; python ask.py --web --llm")
+    print("  连通自检： python ask.py --check-llm --llm  （真发一次请求，报错会带完整诊断）")
     return 0
 
 
@@ -285,6 +301,58 @@ def cmd_web(engine: RagEngine, args: argparse.Namespace) -> int:
     from campus_rag.web import serve
 
     serve(engine, host=args.host, port=args.port, open_browser=not args.no_browser)
+    return 0
+
+
+def cmd_check_llm(engine: RagEngine, args: argparse.Namespace) -> int:
+    """真的发一次请求，把"大模型这一层到底通不通"的原始证据摆出来。
+
+    为什么要有它：`--info` 只调 `GET /models` ——那只证明"key 有效"，
+    不证明"能拿到答案"。实测踩过的坑：thinking 默认开启，思维链把 max_tokens 吃光，
+    `content` 返回空串，用户只看到一句"LLM 返回空内容"，
+    既不知道是截断、是限流还是网关过滤。这个命令把 finish_reason / usage /
+    思维链长度 / 正文都打出来，一次定位。
+    """
+    from campus_rag.config import llm_disabled_reason, offline_requested
+
+    cfg = engine.cfg
+    print(BANNER)
+    offline = bool(getattr(args, "offline", False)) or offline_requested()
+    reason = llm_disabled_reason(cfg, offline=offline)
+    print("【大模型连通性自检】")
+    print(f"  模型      ：{cfg.llm_model}")
+    print(f"  接口      ：{cfg.llm_base_url}")
+    print(f"  思维链    ：{cfg.llm_thinking}（enabled/disabled/omit）")
+    print(f"  生成参数  ：temperature={cfg.temperature} max_tokens={cfg.max_tokens}")
+    if reason or engine.llm is None:
+        print(f"\n[跳过] 大模型未启用（{reason or '未构造客户端'}）。")
+        print("       先解决这一层：加 --llm，并确认 DEEPSEEK_API_KEY 在同一个窗口里。")
+        return 1
+
+    llm = engine.llm
+    print("\n【1/2】GET /models —— 只证明 key 有效")
+    try:
+        models = llm.list_models()
+        print(f"  OK：{models[:8]}")
+    except LLMError as e:
+        print(f"  失败：{e}")
+        print("  → key 无效/欠费/网络不通。三种错误的含义见 README §6.1。")
+        return 1
+
+    print("\n【2/2】POST /chat/completions —— 这才证明能拿到答案")
+    try:
+        res = llm.chat("你是一个测试助手。", "只回复两个字：可用")
+    except LLMError as e:
+        print(f"  失败：{e}")
+        print("  → 上面那句已经把 finish_reason / 用量 / 思维链长度都写出来了，照着建议改即可。")
+        return 1
+
+    print(f"  OK：{res.latency_ms} ms，模型 {res.model}")
+    print(f"  finish_reason = {res.finish_reason or '未提供'}")
+    print(f"  usage         = {res.usage}")
+    print(f"  正文长度      = {len(res.text)} 字｜思维链长度 = {res.reasoning_chars} 字")
+    print(f"  正文预览      = {res.text[:120]}")
+    print("\n[结论] 大模型这一层是通的。若网页里仍显示离线抽取式，请确认启动时带了 --llm。")
     return 0
 
 
@@ -298,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--web", action="store_true", help="启动浏览器 Demo")
     p.add_argument("--eval", action="store_true", help="运行离线评测")
     p.add_argument("--info", action="store_true", help="打印语料与配置自检信息")
+    p.add_argument("--check-llm", action="store_true", help="真的发一次请求，自检大模型能否拿到答案")
     p.add_argument("--ask", action="store_true", help="单次提问模式")
     p.add_argument("--chat", action="store_true", help="强制进入交互模式")
     p.add_argument("--llm", action="store_true", help="启用大模型生成（需 API key）")
@@ -325,6 +394,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.info:
         return cmd_info(engine, args)
+    if args.check_llm:
+        return cmd_check_llm(engine, args)
     if args.eval:
         return cmd_eval(engine, args)
     if args.web:

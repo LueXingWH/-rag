@@ -322,7 +322,9 @@ class RagEngine:
                         usage=res.usage,
                         trace=trace,
                     )
-                err = "LLM 返回空内容"
+                # 防御性分支：LLMClient.chat 现在对空正文直接抛 LLMError（自带完整诊断），
+                # 正常走不到这里。留着是为了万一换成别的客户端实现，也不会把空答案当成功。
+                err = "LLM 返回空内容（客户端未抛异常；建议跑 python ask.py --check-llm 看详情）"
             except LLMError as e:
                 err = str(e)
             return Answer(

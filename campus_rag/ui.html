@@ -143,7 +143,7 @@ function renderCard(q, d){
     </div>
     <div class="answer">${withCites(d.answer)}</div>
     <div class="confbar"><i style="width:${conf}%"></i></div>
-    ${d.error?`<div class="err">⚠️ 已自动降级（${esc(d.error).slice(0,140)}）</div>`:""}
+    ${d.error?`<div class="err">⚠️ 大模型调用失败，已自动降级为离线摘录（下面的答案照样可用、可核对）：${esc(d.error).slice(0,300)}</div>`:""}
     ${srcs?`<div class="srcs"><h4>📎 引用来源（可展开核对原文）</h4>${srcs}</div>`:""}
     <div class="trace">检索轨迹：词法分 ${(tr.lexical_top||0).toFixed(2)} · 向量分 ${(tr.vector_top||0).toFixed(2)} ·
       语义通道 ${tr.semantic_enabled?"开启":"关闭"} · 命中词 ${(tr.matched_terms||[]).slice(0,8).join("/")||"—"}</div>
@@ -162,8 +162,12 @@ async function ask(q){
     const r = await fetch("/api/ask", {method:"POST", headers:{"Content-Type":"application/json"},
                                        body: JSON.stringify({question:q})});
     const d = await r.json();
-    if(d.error){ document.getElementById(id).innerHTML =
-      `<div class="q">❓ ${esc(q)}</div><div class="err">服务端错误：${esc(d.error)}</div>`; }
+    // 只有"真的没有答案"才算服务端错误。原先只要 payload 里带 error 字段就直接报错，
+    // 于是"大模型失败但已降级成抽取式答案"这种情况（答案和引用其实都在）被整条丢掉——
+    // 用户看到"服务端错误：LLM 返回空内容"，却连已经摘好的原文都拿不到。
+    // 现在降级走 renderCard，由里面的"⚠️ 已自动降级（原因…）"如实标注。
+    if(!d.answer){ document.getElementById(id).innerHTML =
+      `<div class="q">❓ ${esc(q)}</div><div class="err">服务端错误：${esc(d.error||"未返回答案")}</div>`; }
     else { document.getElementById(id).outerHTML = renderCard(q, d); }
   }catch(e){
     document.getElementById(id).innerHTML = `<div class="q">❓ ${esc(q)}</div><div class="err">请求失败：${esc(e.message)}</div>`;
