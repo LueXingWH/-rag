@@ -689,5 +689,40 @@ class LlmToggleTest(unittest.TestCase):
         self.assertIn("disabled", ui)                       # 不可用时禁用
 
 
+class RunWebBatTest(unittest.TestCase):
+    """`run_web.bat` 由 cmd.exe 执行，Python 测试跑不到它，只能盯它的**文件性质**。
+
+    而这三个性质我真的都踩坏过（就在加"大模型开关"那一轮）：
+    ① 纯 ASCII：cmd.exe 按**字节**偏移读批处理，UTF-8 中文会让它从词中间接着读，
+       报一堆 `'indow:'` / `'EEK_API_KEY'` 不是内部或外部命令；
+    ② CRLF 行尾：同理会让逐行解析错位；
+    ③ `%key:"=%` 去引号之前必须先 `if not defined key` 兜住——
+       空输入时 key 未定义，cmd 会把引号泄漏进下一行的 if，
+       报 `="=="" goto offline was unexpected at this time`（实测复现过）。
+    """
+
+    def setUp(self) -> None:
+        self.raw = (ROOT / "run_web.bat").read_bytes()
+
+    def test_pure_ascii(self) -> None:
+        """README 里那句"纯 ASCII，避免 bat 编码坑"要靠测试执行，不能靠记性。"""
+        bad = sorted({b for b in self.raw if b > 127})
+        self.assertEqual(bad, [], f"run_web.bat 里出现了非 ASCII 字节 {bad}；cmd 会解析错位")
+
+    def test_crlf_line_endings(self) -> None:
+        self.assertGreater(self.raw.count(b"\r\n"), 0)
+        self.assertEqual(self.raw.replace(b"\r\n", b"").count(b"\n"), 0,
+                         "存在裸 LF：cmd.exe 会错位解析")
+
+    def test_quote_stripping_is_guarded(self) -> None:
+        lines = [l.strip().lower() for l in self.raw.decode("ascii").splitlines()]
+        for i, line in enumerate(lines):
+            if "%key:" in line:
+                self.assertTrue(
+                    any("if not defined key" in prev for prev in lines[:i]),
+                    "去引号前必须先用 if not defined key 兜住，否则空输入会让 cmd 解析崩溃",
+                )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

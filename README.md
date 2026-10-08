@@ -35,8 +35,20 @@ python ask.py --web --llm             # 默认开大模型
 python ask.py --web                   # 也可以：起来后在页面上用开关随时切换（配了 key 才可拨）
 ```
 
-Windows 用户可直接双击 `run_web.bat` 一键起服务（**选 [2] 才是 LLM 模式**；
-选 [1] 会走离线模式，若检测到 API key 它会提醒你"key 被忽略了"）。
+Windows 用户可直接双击 `run_web.bat` 一键起服务。它**先告诉你这个窗口能不能看到 `DEEPSEEK_API_KEY`**
+（含末 4 位，只说有没有、不打印完整 key），再让你选：
+
+- **[1] 默认离线** —— 但页面上的「使用大模型」开关照常可用（配了 key 时）
+- **[2] 默认开大模型** —— 没检测到 key 时会**直接让你把 key 粘进来**（只对本次窗口有效），
+  省掉 `setx` + 关窗重开那一步；粘贴时带了引号也会自动去掉
+
+> ⚠️ 最常见的坑：在 PowerShell 里 `$env:DEEPSEEK_API_KEY="sk-..."` 只影响**那一个窗口**；
+> 从资源管理器**双击** bat 会新开一个进程，看不到它。要么在同一个 PowerShell 窗口里跑
+> `.\run_web.bat`，要么用 `setx` 后关掉窗口重开，要么就用上面的选项 [2] 直接粘。
+>
+> 另外这个 bat **必须保持纯 ASCII + CRLF 行尾**（cmd.exe 按字节偏移读批处理，中文或 LF 会让它
+> 从词中间读起，报一堆"`'indow:'` 不是内部或外部命令"）。`tests/test_regressions.py`
+> 里有三条测试专门盯着这件事。
 
 **没有 API key 会怎样？** 自动降级为"离线抽取式回答"：从资料里挑出最相关的原句、
 原样摘录并标注出处。**永不报错、永不断演示**——这是刻意的设计取舍。
@@ -275,7 +287,7 @@ my__ai/
 ├── bench.py                  # 消融实验（验证每项改动是否真有用）
 ├── demo_check.py             # 演示脚本自检（防止改动后悄悄退化）
 ├── calibrate.py              # 拒答阈值扫描曲线
-├── run_web.bat               # Windows 双击即用的启动器（纯 ASCII，避免 bat 编码坑）
+├── run_web.bat               # Windows 双击即用的启动器（必须纯 ASCII + CRLF，有测试盯着）
 ├── campus_rag/
 │   ├── config.py             # 全部可调参数集中在此
 │   ├── text.py               # 分词（CJK bigram + unigram）
