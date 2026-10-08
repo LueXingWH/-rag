@@ -30,7 +30,8 @@ python calibrate.py                   # 只看拒答阈值的扫描曲线
 
 # ② 联网增强（可选：检索结果交给大模型组织成自然语言）
 $env:DEEPSEEK_API_KEY = "sk-xxxx"     # 见下方"可选增强"
-python ask.py --check-llm --llm       # 先自检：真发一次请求，报错会带完整诊断
+python doctor.py                      # 接不上时先跑这个：逐项体检并直接给结论
+python ask.py --check-llm --llm       # 只看"能不能拿到答案"这一环
 python ask.py --web --llm             # 默认开大模型
 python ask.py --web                   # 也可以：起来后在页面上用开关随时切换（配了 key 才可拨）
 ```
@@ -96,6 +97,7 @@ Windows 用户可直接双击 `run_web.bat` 一键起服务。它**先告诉你�
 | `sweep.py` | 参数网格搜索 | 扫 (阈值 × evidence_k)，按"硬答率→拒答准确率→覆盖率"排序选参数 |
 | `bench.py` | 消融实验 | 逐个验证改动（如抽取式候选块数）是否真的提升指标；**严格 / 端到端双口径** |
 | `tests/test_regressions.py` | 回归测试 | 零依赖 `unittest`，把修过的 bug 逐条钉住（同义词死代码、拒答刷覆盖率、bench 双口径、`:s` 恒真） |
+| `doctor.py` | 接入体检 | 一条命令查完 6 环：环境变量 → 配置解析 → DNS/TCP → `/models` → `/chat/completions` → 旧服务端口；末尾直接给结论 |
 | `demo_check.py` | 演示自检 | 把上台要问的问题跑一遍，防止改动后悄悄退化 |
 | `calibrate.py` | 阈值曲线 | 打印"阈值 vs 漏答率 vs 硬答率"的完整权衡曲线 |
 | [`docs/代码走读-有Python基础版.md`](<docs/代码走读-有Python基础版.md>) | **★ 有 Python 基础先读这个** | 不讲语法，只讲数据怎么流动 + 每个判断为什么存在；约 0.4 万字，30 分钟 |

@@ -737,5 +737,40 @@ class RunWebBatTest(unittest.TestCase):
                 )
 
 
+class DoctorTest(unittest.TestCase):
+    """`doctor.py`：一条命令把"为什么用不了大模型"查到底。
+
+    它存在的理由本身就是一条教训：前面几轮我全靠猜（key 没配上？没加 --llm？
+    thinking 吃光 token？前端缓存？），来回好几轮没解决。体检脚本把每一环
+    （环境变量 → 配置解析 → DNS/TCP → /models → /chat/completions → 旧服务端口）
+    都变成可判定的输出，让人**看结论**而不是继续猜。
+    """
+
+    def test_mask_never_leaks_the_middle_of_a_key(self) -> None:
+        """报告可能被贴到聊天窗口里——只许露前 6 位和末 4 位。"""
+        import doctor
+
+        key = "sk-abcdefghijklmnopqrstuvwxyz1234"
+        masked = doctor._mask(key)
+        self.assertTrue(masked.startswith("sk-abc"))
+        self.assertTrue(masked.endswith("1234"))
+        self.assertNotIn("hijklmnop", masked)          # 中间那段绝不能出现
+        self.assertEqual(doctor._mask(""), "(空)")
+        self.assertNotIn("secret", doctor._mask("secret"))  # 太短的整段打码
+
+    def test_host_port_parsing(self) -> None:
+        import doctor
+
+        self.assertEqual(doctor._host_port("https://api.deepseek.com"), ("api.deepseek.com", 443))
+        self.assertEqual(doctor._host_port("http://127.0.0.1:8201/v1"), ("127.0.0.1", 8201))
+        self.assertEqual(doctor._host_port("api.deepseek.com"), ("api.deepseek.com", 443))
+
+    def test_doctor_is_wired_into_the_bat(self) -> None:
+        """bat 里必须能直接调起体检——否则用户还得自己找窗口、自己配环境。"""
+        bat = (ROOT / "run_web.bat").read_text(encoding="ascii")
+        self.assertIn("goto doctor", bat)
+        self.assertIn("py -3 doctor.py", bat)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

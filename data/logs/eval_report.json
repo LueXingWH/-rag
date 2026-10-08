@@ -11,7 +11,7 @@
     "answer_coverage": 0.625,
     "unanswerable_refusal_rate": 1.0,
     "latency_p50_ms": 3.0,
-    "latency_mean_ms": 2.8
+    "latency_mean_ms": 3.0
   },
   "by_category": {
     "direct": {
@@ -61,7 +61,7 @@
         "08-南海校区校规校纪问答.md",
         "09-南海校区通知公告问答.md"
       ],
-      "answer": "（离线抽取式回答：以下为资料原文摘录，未经改写，可直接核对）\n[2] **周日至周四 23:00** 关门熄灯，**周五、周六及法定节假日 23:30** 关门。\n[1] 周日至周四 23:00 关，周五、周六及法定节假日 23:30 关。\n[3] - 寒暑假及法定节假日暂停报销，报销日遇节假日顺延一周。\n[1] **问：宿舍晚上几点关门？\n[2] - 晚归、不刷卡或跨越门禁设备出入宿舍，经批评教育 **3 次及以上**仍不改正的，给予警告处分。\n[1] ** 答：宿舍大门每日 6:00 开；",
+      "answer": "（离线抽取式回答：以下为资料原文摘录，未经改写，可直接核对）\n[2] **周日至周四 23:00** 关门熄灯，**周五、周六及法定节假日 23:30** 关门。\n[1] 周日至周四 23:00 关，周五、周六及法定节假日 23:30 关。\n[3] - 寒暑假及法定节假日暂停报销，报销日遇节假日顺延一周。\n[2] - 晚归、不刷卡或跨越门禁设备出入宿舍，经批评教育 **3 次及以上**仍不改正的，给予警告处分。\n[1] **问：宿舍晚上几点关门？\n[1] ** 答：宿舍大门每日 6:00 开；",
       "error": null
     },
     {
@@ -96,7 +96,7 @@
       "gold_source": "08-南海校区校规校纪问答.md",
       "mode": "extractive",
       "confidence": 0.4219,
-      "latency_ms": 3,
+      "latency_ms": 4,
       "hit_at_1": false,
       "hit_at_k": true,
       "reciprocal_rank": 0.5,
@@ -120,7 +120,7 @@
       "gold_source": "08-南海校区校规校纪问答.md",
       "mode": "extractive",
       "confidence": 0.5524,
-      "latency_ms": 4,
+      "latency_ms": 3,
       "hit_at_1": true,
       "hit_at_k": true,
       "reciprocal_rank": 1.0,
@@ -144,7 +144,7 @@
       "gold_source": "08-南海校区校规校纪问答.md",
       "mode": "extractive",
       "confidence": 0.6284,
-      "latency_ms": 2,
+      "latency_ms": 3,
       "hit_at_1": true,
       "hit_at_k": true,
       "reciprocal_rank": 1.0,
@@ -192,7 +192,7 @@
       "gold_source": "09-南海校区通知公告问答.md",
       "mode": "extractive",
       "confidence": 0.5039,
-      "latency_ms": 3,
+      "latency_ms": 2,
       "hit_at_1": true,
       "hit_at_k": true,
       "reciprocal_rank": 1.0,
@@ -216,7 +216,7 @@
       "gold_source": "09-南海校区通知公告问答.md",
       "mode": "extractive",
       "confidence": 0.4719,
-      "latency_ms": 3,
+      "latency_ms": 4,
       "hit_at_1": true,
       "hit_at_k": true,
       "reciprocal_rank": 1.0,
@@ -240,7 +240,7 @@
       "gold_source": "08-南海校区校规校纪问答.md",
       "mode": "refusal",
       "confidence": 0.3062,
-      "latency_ms": 2,
+      "latency_ms": 3,
       "hit_at_1": false,
       "hit_at_k": true,
       "reciprocal_rank": 0.5,
@@ -293,7 +293,7 @@
       "gold_source": "08-南海校区校规校纪问答.md",
       "mode": "refusal",
       "confidence": 0.361,
-      "latency_ms": 2,
+      "latency_ms": 3,
       "hit_at_1": true,
       "hit_at_k": true,
       "reciprocal_rank": 1.0,
@@ -373,7 +373,7 @@
       "gold_source": "09-南海校区通知公告问答.md",
       "mode": "refusal",
       "confidence": 0.3964,
-      "latency_ms": 1,
+      "latency_ms": 3,
       "hit_at_1": true,
       "hit_at_k": true,
       "reciprocal_rank": 1.0,
@@ -399,7 +399,7 @@
       "gold_source": "09-南海校区通知公告问答.md",
       "mode": "extractive",
       "confidence": 0.4688,
-      "latency_ms": 4,
+      "latency_ms": 3,
       "hit_at_1": true,
       "hit_at_k": true,
       "reciprocal_rank": 1.0,
@@ -495,7 +495,7 @@
       "gold_source": null,
       "mode": "refusal",
       "confidence": 0.331,
-      "latency_ms": 3,
+      "latency_ms": 4,
       "hit_at_1": false,
       "hit_at_k": false,
       "reciprocal_rank": 0.0,
@@ -614,5 +614,5 @@
     "cache_dir": "C:\\Users\\26586\\Desktop\\大学\\my__ai\\.cache",
     "extra": {}
   },
-  "elapsed_ms": 71
+  "elapsed_ms": 78
 }

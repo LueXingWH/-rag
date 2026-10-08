@@ -35,14 +35,26 @@ echo.
 echo   [1] Web demo  - LLM off by default  - the switch in the page still works
 echo   [2] Web demo  - LLM on by default   - needs DEEPSEEK_API_KEY
 echo   [3] Run evaluation only  - show metrics
+echo   [4] Diagnose why LLM does not work  - full report, names the reason
 echo.
-set /p choice=Choose [1/2/3], press Enter for 1:
+set /p choice=Choose [1/2/3/4], press Enter for 1:
 if "%choice%"=="" set choice=1
 echo.
 
+if "%choice%"=="4" goto doctor
 if "%choice%"=="3" goto eval
 if "%choice%"=="2" goto llmon
 goto offline
+
+:doctor
+echo   Checking every step: env vars, config, network, /models, /chat/completions...
+echo.
+py -3 doctor.py
+echo.
+echo   Report also saved to data\logs\doctor_report.txt
+echo.
+pause
+goto end
 
 :offline
 if not "%DEEPSEEK_API_KEY%"=="" echo   [note] Key IS set - offline is only the DEFAULT here.
@@ -79,6 +91,7 @@ echo            - balance / quota      -^> top up the account
 echo            - cannot connect       -^> proxy, firewall or offline network
 echo.
 echo          Press Enter to start in OFFLINE mode anyway, or close this window.
+echo          Tip: choose [4] for a full report of every step.
 echo.
 pause
 goto offline
