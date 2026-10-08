@@ -8,6 +8,10 @@ venv/
 # 工具工作状态
 .workbuddy/
 
+# 本机诊断产物（doctor.py 每次运行都会重写；内容是"这台机器的环境快照"，
+# 含本机路径与脱敏后的 key，属于本地排查信息，不该进仓库）
+data/logs/doctor_report.txt
+
 # 系统文件
 Thumbs.db
 .DS_Store
