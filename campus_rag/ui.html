@@ -77,6 +77,7 @@
   .llmtoggle .switch.on .knob::after{left:14px;background:var(--accent)}
   .llmtoggle .switch.disabled{opacity:.5;cursor:not-allowed}
   .llmtoggle .note{color:#5d6884}
+  .llmtoggle .retry{color:var(--accent);cursor:pointer;text-decoration:underline;margin-left:4px}
 </style>
 </head>
 <body>
@@ -148,6 +149,7 @@ async function loadBadges(){
 let llmAvailable = false;
 let llmReason = "";
 let llmDefault = false;
+let llmKeyConfigured = false;
 let useLlm = false;
 
 function renderLlmToggle(){
@@ -155,23 +157,37 @@ function renderLlmToggle(){
   const cls = "switch" + (useLlm && llmAvailable ? " on" : "") + (llmAvailable ? "" : " disabled");
   const state = !llmAvailable ? "不可用" : (useLlm ? "开" : "关");
   let note;
-  if(!llmAvailable) note = `未配置 API key（或已强制离线）${llmReason? "：" + esc(llmReason):""}`;
+  if(!llmAvailable) note = `不可用：${esc(llmReason || "未配置 API key")}`;
   else if(useLlm)   note = "回答由大模型组织，检索结果严格接地";
   else if(llmDefault) note = "你在这里关掉了它 —— 服务端默认是开的";
   else              note = "只做原文摘录，不调用任何网络接口";
+  // 配了 key 却探测失败时给一个"重新检测"：启动那一下可能撞上网络抖动，
+  // 不该为了一个瞬时失败去重启整个服务。
+  const retry = (!llmAvailable && llmKeyConfigured)
+    ? ` <span class="retry" id="llmretry" title="再调一次 /models，确认这个 key 现在能不能用">重新检测</span>` : "";
   box.innerHTML = `
-    <span class="${cls}" id="llmswitch" title="${llmAvailable?'点击切换':'需要先配置 DEEPSEEK_API_KEY'}">
+    <span class="${cls}" id="llmswitch" title="${llmAvailable?'点击切换':'当前不可用，原因见右侧'}">
       <span class="knob"></span>使用大模型：${state}
     </span>
-    <span class="note">${note}</span>`;
+    <span class="note">${note}${retry}</span>`;
   const el = $("#llmswitch");
   if(llmAvailable) el.onclick = () => { useLlm = !useLlm; renderLlmToggle(); };
+  const rt = $("#llmretry");
+  if(rt) rt.onclick = async () => {
+    rt.textContent = "检测中…";
+    try{
+      const r = await fetch("/api/llm-check", {method:"POST"});
+      applyLlmAvailability(await r.json());
+      if(llmAvailable) loadBadges();
+    }catch(e){ rt.textContent = "重新检测（失败）"; }
+  };
 }
 
 function applyLlmAvailability(info){
   llmAvailable = !!info.llm_available;
   llmReason = info.llm_reason || "";
   llmDefault = !!info.llm_enabled;
+  llmKeyConfigured = !!info.llm_key_configured;
   // 初始状态**只看服务端**（--llm / CAMPUS_RAG_API_KEY 决定的默认），不读任何本地记录：
   // 本地存过的"关"会在下次带 --llm 启动时把服务端的"开"压掉，
   // 那就是"我在 bat 里选了 2，页面开关还是关"的来源。

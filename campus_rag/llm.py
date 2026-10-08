@@ -168,6 +168,39 @@ class LLMClient:
         return ids
 
 
+def probe_llm(cfg: Any) -> Dict[str, Any]:
+    """按配置真发一次最廉价的请求，回答"这一层到底能不能用"。
+
+    为什么需要它：Web 上那个「使用大模型」开关必须**只有真的能用时才可拨**。
+    只判断"有没有配 key"是不够的——key 写错时开关照样能拨，然后每题静默降级，
+    用户看到的就是"按钮能用但根本没用"。实测的抱怨正是这一句。
+    这里用 /models：最便宜、能区分 401/402/网络不通，且能核对模型名。
+
+    返回 {"checked", "ok", "error", "models", "ms"}；超时上限压到 10 秒，
+    免得启动时在一个黑洞网络上干等（正常 100~500ms）。
+    """
+    if not getattr(cfg, "llm_api_key", ""):
+        return {"checked": True, "ok": False, "error": "未配置 API key", "models": [], "ms": 0}
+    client = LLMClient(
+        cfg.llm_base_url,
+        cfg.llm_api_key,
+        cfg.llm_model,
+        timeout=min(float(getattr(cfg, "llm_timeout", 60.0)), 10.0),
+        thinking=getattr(cfg, "llm_thinking", "disabled"),
+    )
+    started = time.time()
+    try:
+        models = client.list_models()
+    except LLMError as e:
+        return {"checked": True, "ok": False, "error": str(e), "models": [],
+                "ms": int((time.time() - started) * 1000)}
+    ms = int((time.time() - started) * 1000)
+    if models and cfg.llm_model not in models:
+        return {"checked": True, "ok": False, "models": models[:8], "ms": ms,
+                "error": f"模型 {cfg.llm_model} 不在账号可用列表里：{models[:8]}"}
+    return {"checked": True, "ok": True, "error": "", "models": models[:8], "ms": ms}
+
+
 class EmbeddingClient:
     """OpenAI 兼容 /embeddings。用于把词法检索升级为语义检索。"""
 

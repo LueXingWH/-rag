@@ -97,26 +97,17 @@ pause
 goto offline
 
 :nokey
-echo   [warn] No DEEPSEEK_API_KEY in this window, so LLM mode cannot start yet.
+rem The key prompt itself lives in Python (ask.py --ask-key), NOT here. Two reasons:
+rem   1) this file must stay pure ASCII, so it cannot explain anything in Chinese -
+rem      and "how do I copy the key" is exactly the step that needs clear wording;
+rem   2) Python reads the key straight into its own process, so we do not depend on
+rem      cmd's set / variable inheritance at all. That also removed a real bug:
+rem      "%key:"=%" with an undefined key leaked a quote into the next "if" line.
+echo   [info] No key in this window - switching to the guided setup in Chinese.
 echo.
-set "key="
-set /p key=Paste your key to use it now - this window only - or press Enter to stay offline:
-rem The "if not defined" guard is REQUIRED before the quote-stripping line below.
-rem Without it, empty input leaves %key% undefined and cmd leaks a quote into the
-rem next "if" line, failing with: ="=="" goto offline was unexpected at this time.
-if not defined key goto offline
-rem Strip quotes in case the key is pasted with them: a quoted key fails auth.
-set "DEEPSEEK_API_KEY=%key:"=%"
-rem Reject empty and whitespace-only input; only a real key may start LLM mode.
-if "%DEEPSEEK_API_KEY%"=="" goto offline
-if "%DEEPSEEK_API_KEY: =%"=="" goto offline
-echo.
-echo   [info] Key accepted for this window only: %DEEPSEEK_API_KEY:~0,6%...%DEEPSEEK_API_KEY:~-4%
-rem Echo the masked key so a bad paste (half a key, extra text) is visible immediately.
-rem DeepSeek keys always start with "sk-" - warn, but do not block: other
-rem OpenAI-compatible providers may use a different prefix.
-if not "%DEEPSEEK_API_KEY:~0,3%"=="sk-" echo   [warn] That does not start with "sk-" - check the paste? Prefix keys do differ per provider.
-goto llmon
+py -3 ask.py --web --llm --ask-key
+if errorlevel 1 goto fail
+goto end
 
 :eval
 echo   Running offline evaluation (22 questions)...

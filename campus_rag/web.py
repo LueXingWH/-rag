@@ -17,6 +17,7 @@ from typing import Any, Dict
 
 from .config import llm_disabled_reason, offline_requested
 from .engine import RagEngine
+from .llm import probe_llm
 from .qa_logger import log_answer
 
 UI_PATH = Path(__file__).resolve().parent / "ui.html"
@@ -26,36 +27,43 @@ _LOCK = threading.Lock()
 def build_info_payload(engine: RagEngine) -> Dict[str, Any]:
     """`/api/info` 的响应体。
 
-    单独抽成函数是为了可测——这里踩过一个真实的坑：
-    前端徽章原先读 `config.llm_api_key`（"有没有配 key"）来决定显示"大模型生成 开/关"，
-    而真正的开关是 `use_llm`。于是"配了 key 但启动时没加 --llm"时，
-    页面右上角亮着绿灯写"开"，下面每条回答却都是"离线抽取式降级"——
-    用户看到的就是"我明明配了 API，为什么还是离线模式"。
-
-    现在把**结论**（llm_enabled / llm_reason）由后端算好交给前端，前端不再自己猜；
-    判断口径也只有 `config.llm_disabled_reason` 这一处（同一个教训见 bug 6）。
+    单独抽成函数是为了可测——这里踩过两个真实的坑：
+    ① 前端徽章原先读 `config.llm_api_key`（"有没有配 key"）来决定"大模型生成 开/关"，
+       而真正的开关是 `use_llm`；脱敏后的 "***" 永远非空 → 徽章永远显示"开"。
+    ② 只判断"有没有配 key"来决定**开关能不能拨**同样不够：key 写错时开关照样能拨，
+       然后每题静默降级——用户的原话是"没连 llm 时按钮还能用这不合理"。
+    所以现在 `llm_available` 要求启动时那次 `/models` 探测**真的成功**。
     """
     cfg = engine.cfg
     offline = offline_requested()
     config = cfg.to_dict()
     # 把两个 key 字段整个摘掉：它们在 to_dict 里已被脱敏成 "***"，
     # 浏览器拿不到真值、却会因为"非空"而误判（旧徽章就是这么被骗的）。
-    # 命令行 --info 早就不打印这两个字段了，这里与它保持一致。
     for secret in ("llm_api_key", "embed_api_key"):
         config.pop(secret, None)
-    # llm_available：**开关能不能拨**（配了 key 且没被强制离线）。
-    # 与 llm_enabled（现在开着没）是两件事——前端要分别用：
-    # 前者决定开关是否可点，后者决定初始是开还是关。
-    available = bool(cfg.llm_api_key) and not offline
+
+    status = getattr(engine, "llm_status", None) or {}
+    key_configured = bool(cfg.llm_api_key)
+    probed = bool(status.get("checked"))
+    probe_ok = bool(status.get("ok"))
+    # 开关能不能拨：配了 key + 没强制离线 + 探测成功，三者缺一不可
+    available = key_configured and not offline and (probe_ok if probed else True)
+    if not available and probed and key_configured and not offline:
+        reason = status.get("error") or "大模型不可用"
+    else:
+        reason = llm_disabled_reason(cfg, offline=offline)
     return {
         "chunks": len(engine.chunks),
         "docs": sorted({c.source for c in engine.chunks}),
         "config": config,
         "semantic_enabled": engine.retriever.semantic_enabled,
+        "llm_key_configured": key_configured,
         "llm_available": available,
         "llm_enabled": bool(cfg.use_llm and available),
         "llm_model": cfg.llm_model,
-        "llm_reason": llm_disabled_reason(cfg, offline=offline),
+        "llm_reason": reason,
+        "llm_probe": {"checked": probed, "ok": probe_ok,
+                      "ms": status.get("ms", 0), "error": status.get("error", "")},
     }
 
 
@@ -136,6 +144,13 @@ def make_handler(engine: RagEngine):
             self._send(404, b'{"error":"not found"}', "application/json")
 
         def do_POST(self) -> None:  # noqa: N802
+            if self.path == "/api/llm-check":
+                # 重新探测一次：启动时的那次可能撞上网络抖动，
+                # 不该让用户为一个瞬时失败重启整个服务。
+                engine.llm_status = probe_llm(engine.cfg)  # type: ignore[attr-defined]
+                self._send(200, json.dumps(build_info_payload(engine), ensure_ascii=False).encode("utf-8"),
+                           "application/json")
+                return
             if self.path != "/api/ask":
                 self._send(404, b'{"error":"not found"}', "application/json")
                 return

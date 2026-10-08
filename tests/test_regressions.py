@@ -727,14 +727,21 @@ class RunWebBatTest(unittest.TestCase):
         self.assertEqual(self.raw.replace(b"\r\n", b"").count(b"\n"), 0,
                          "存在裸 LF：cmd.exe 会错位解析")
 
-    def test_quote_stripping_is_guarded(self) -> None:
-        lines = [l.strip().lower() for l in self.raw.decode("ascii").splitlines()]
-        for i, line in enumerate(lines):
-            if "%key:" in line:
-                self.assertTrue(
-                    any("if not defined key" in prev for prev in lines[:i]),
-                    "去引号前必须先用 if not defined key 兜住，否则空输入会让 cmd 解析崩溃",
-                )
+    def test_no_quote_stripping_left_in_the_bat(self) -> None:
+        """`%key:"=%` 在 key 未定义时会让 cmd 解析崩溃（实测过）。
+
+        现在这段逻辑整体挪进了 Python（`ask.py --ask-key`：中文提示 + 读入 + 去引号
+        + 校验），bat 里**不该再有**它。注释里提到这个坑是允许的，所以只看可执行行。
+        """
+        for line in self.raw.decode("ascii").splitlines():
+            code = line.strip()
+            if not code or code.lower().startswith("rem"):
+                continue
+            self.assertNotIn('%key:"=%', code, "去引号逻辑应留在 Python 侧，bat 不许再有它")
+        # 没拿到 key 时应该交给 Python 那个中文引导流程，而不是自己 set /p
+        bat = self.raw.decode("ascii")
+        self.assertIn("ask.py --web --llm --ask-key", bat)
+        self.assertNotIn("set /p key=", bat)
 
 
 class DoctorTest(unittest.TestCase):
@@ -770,6 +777,134 @@ class DoctorTest(unittest.TestCase):
         bat = (ROOT / "run_web.bat").read_text(encoding="ascii")
         self.assertIn("goto doctor", bat)
         self.assertIn("py -3 doctor.py", bat)
+
+
+class ApiKeyPromptTest(unittest.TestCase):
+    """`ask.py --ask-key`：中文引导用户粘贴 key（从 .bat 挪进 Python 的那段）。
+
+    为什么要挪：`run_web.bat` 必须纯 ASCII（cmd.exe 按字节偏移解析，中文会让它
+    从词中间读起），所以那里只能写英文——而"第一步教用户抄 key"恰恰最需要中文。
+    挪进 Python 还顺带保证 key 落在**将要运行服务的那个进程**里，
+    不必再靠 cmd 的 set 传递（"$env: 只对当前窗口有效"就是这么坑了好几轮）。
+    """
+
+    def setUp(self) -> None:
+        self._saved = os.environ.pop("DEEPSEEK_API_KEY", None)
+        self._saved2 = os.environ.pop("CAMPUS_RAG_API_KEY", None)
+
+    def tearDown(self) -> None:
+        os.environ.pop("DEEPSEEK_API_KEY", None)
+        os.environ.pop("CAMPUS_RAG_API_KEY", None)
+        if self._saved:
+            os.environ["DEEPSEEK_API_KEY"] = self._saved
+        if self._saved2:
+            os.environ["CAMPUS_RAG_API_KEY"] = self._saved2
+
+    def _run(self, answers) -> tuple:
+        buf = io.StringIO()
+        with mock.patch("builtins.input", side_effect=answers), contextlib.redirect_stdout(buf):
+            ok = ask.prompt_for_api_key()
+        return ok, buf.getvalue()
+
+    def test_accepts_a_key_and_puts_it_in_this_process(self) -> None:
+        ok, out = self._run(["sk-abcdefghijklmnop"])
+        self.assertTrue(ok)
+        # 关键：写进**当前进程**，随后的 Config.from_env 才读得到
+        self.assertEqual(os.environ["DEEPSEEK_API_KEY"], "sk-abcdefghijklmnop")
+        self.assertIn("sk-abc...mnop", out)
+
+    def test_quotes_and_spaces_are_stripped(self) -> None:
+        ok, _ = self._run(['  "sk-quotedkey123456"  '])
+        self.assertTrue(ok)
+        self.assertEqual(os.environ["DEEPSEEK_API_KEY"], "sk-quotedkey123456")
+
+    def test_never_prints_the_whole_key(self) -> None:
+        """终端可能被截图或贴到聊天窗口里——只许出现掩码。"""
+        ok, out = self._run(["sk-supersecretmiddle9999"])
+        self.assertTrue(ok)
+        self.assertNotIn("supersecretmiddle", out)
+        self.assertIn("9999", out)          # 末 4 位用于让用户核对
+
+    def test_empty_input_retries_then_falls_back(self) -> None:
+        ok, out = self._run(["", "   ", ""])
+        self.assertFalse(ok)
+        self.assertNotIn("DEEPSEEK_API_KEY", os.environ)   # 不能把空串当成 key
+        self.assertIn("离线模式", out)
+
+    def test_eof_does_not_crash(self) -> None:
+        ok, _ = self._run([EOFError])
+        self.assertFalse(ok)
+        self.assertNotIn("DEEPSEEK_API_KEY", os.environ)
+
+    def test_warns_on_a_non_sk_prefix_but_still_accepts(self) -> None:
+        """别的 OpenAI 兼容网关前缀可能不是 sk-，所以只提醒不拦截。"""
+        ok, out = self._run(["my-gateway-token-1234"])
+        self.assertTrue(ok)
+        self.assertIn("不是以", out)
+
+
+class LlmProbeTest(unittest.TestCase):
+    """开关能不能拨，取决于**启动时那次探测真的成功**，而不是"有没有配 key"。
+
+    用户原话："没连 llm 时『使用大模型』按钮还能用这不合理"——
+    只判断 key 存在的话，key 写错时开关照样能拨，然后每题静默降级。
+    """
+
+    def _engine(self, status, api_key="sk-dummy"):
+        cfg = Config()
+        cfg.llm_api_key = api_key
+        cfg.use_llm = True
+        return SimpleNamespace(cfg=cfg, chunks=[SimpleNamespace(source="a.md")],
+                               retriever=SimpleNamespace(semantic_enabled=False),
+                               llm_status=status)
+
+    def test_probe_failure_disables_the_switch_with_the_real_reason(self) -> None:
+        import campus_rag.web as web
+
+        info = web.build_info_payload(self._engine(
+            {"checked": True, "ok": False, "error": "HTTP 401（API key 无效）"}))
+        self.assertTrue(info["llm_key_configured"])   # key 是配了的……
+        self.assertFalse(info["llm_available"])       # ……但用不了，所以开关不可拨
+        self.assertFalse(info["llm_enabled"])
+        self.assertIn("401", info["llm_reason"])      # 原因要如实透出来
+
+    def test_probe_success_keeps_the_switch_usable(self) -> None:
+        import campus_rag.web as web
+
+        info = web.build_info_payload(self._engine({"checked": True, "ok": True, "error": ""}))
+        self.assertTrue(info["llm_available"])
+        self.assertTrue(info["llm_enabled"])
+
+    def test_without_probe_it_falls_back_to_key_presence(self) -> None:
+        """非 Web 路径（比如直接构造引擎）没有探测结果时，保持原行为，别误锁。"""
+        import campus_rag.web as web
+
+        info = web.build_info_payload(self._engine({}))
+        self.assertTrue(info["llm_available"])
+
+    def test_no_key_is_unavailable_regardless_of_probe(self) -> None:
+        import campus_rag.web as web
+
+        info = web.build_info_payload(self._engine({"checked": True, "ok": True}, api_key=""))
+        self.assertFalse(info["llm_available"])
+        self.assertFalse(info["llm_key_configured"])
+
+    def test_probe_reports_model_name_mismatch(self) -> None:
+        """key 有效但模型名不对，同样是"用不了"，必须挡住。"""
+        from campus_rag.llm import probe_llm
+
+        cfg = Config()
+        cfg.llm_api_key = "sk-dummy"
+        cfg.llm_model = "deepseek-does-not-exist"
+        with mock.patch("campus_rag.llm.LLMClient.list_models", return_value=["deepseek-flash"]):
+            status = probe_llm(cfg)
+        self.assertFalse(status["ok"])
+        self.assertIn("不在账号可用列表", status["error"])
+
+    def test_ui_offers_a_recheck(self) -> None:
+        ui = (ROOT / "campus_rag" / "ui.html").read_text(encoding="utf-8")
+        self.assertIn("/api/llm-check", ui)      # 瞬时失败不该逼用户重启服务
+        self.assertIn("llm_key_configured", ui)  # 没配 key 时不显示"重新检测"
 
 
 if __name__ == "__main__":

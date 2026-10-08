@@ -43,7 +43,7 @@ from campus_rag.config import Config, llm_disabled_reason, offline_requested  # 
 from campus_rag.data import load_corpus  # noqa: E402
 from campus_rag.engine import RagEngine  # noqa: E402
 from campus_rag.evaluate import format_report, load_eval_set, run_eval  # noqa: E402
-from campus_rag.llm import EmbeddingClient, LLMClient, LLMError  # noqa: E402
+from campus_rag.llm import EmbeddingClient, LLMClient, LLMError, probe_llm  # noqa: E402
 from campus_rag.qa_logger import log_answer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
@@ -88,6 +88,63 @@ def _announce_llm_status(args: argparse.Namespace, cfg: Config) -> None:
     hint = llm_status_hint(args, cfg, offline=bool(getattr(args, "offline", False)) or offline_requested())
     if hint:
         print(hint)
+
+
+def _mask_key(key: str) -> str:
+    """只露前 6 位和末 4 位——终端输出可能被截图或贴到聊天窗口。"""
+    if not key:
+        return "(空)"
+    if len(key) <= 12:
+        return key[:3] + "***"
+    return f"{key[:6]}...{key[-4:]}"
+
+
+def prompt_for_api_key(attempts: int = 3) -> bool:
+    """交互式要一次 API key；拿到就写进**当前进程**的环境变量并返回 True。
+
+    为什么把它从 .bat 挪进 Python（用户反馈"选 2 之后的提示不清晰"）：
+    ① `run_web.bat` 必须保持纯 ASCII——cmd.exe 按字节偏移解析批处理，中文会让它
+       从词中间接着读，实测报 `'indow:' 不是内部或外部命令`。所以那里只能写英文，
+       而"第一步教用户抄 key"恰恰最需要中文说清；
+    ② 在 Python 里读，key 直接落在本进程，不必再靠 cmd 的 set 传递，
+       顺带绕开"$env: 只对当前窗口有效"这个反复让用户踩的作用域问题。
+    """
+    print("=" * 64)
+    print("  需要 DeepSeek API key —— 只为了把大模型接上（约 30 秒）")
+    print("=" * 64)
+    print("  1. 浏览器打开 https://platform.deepseek.com/api_keys")
+    print("     登录后点 Create new API key，复制那串 sk- 开头的字符")
+    print("  2. 回到这个黑窗口，在下面 **点鼠标右键** 粘贴")
+    print("     （命令提示符里 Ctrl+V 常常没反应，右键才是它的粘贴方式）")
+    print("  3. 按回车")
+    print()
+    print("  说明：粘进去的字符**不会显示在屏幕上**，这是正常的（免得被旁人看到）。")
+    print("        这里输入的 key 只对本次运行有效；想永久保存，成功后会给你一行命令。")
+    print()
+    for attempt in range(1, attempts + 1):
+        try:
+            raw = input("key > " if attempt == 1 else f"key（第 {attempt}/{attempts} 次）> ")
+        except (EOFError, KeyboardInterrupt):
+            print("\n  （没有读到输入）")
+            return False
+        key = raw.strip().strip('"').strip("'").strip()
+        if not key:
+            print("  ⚠ 没输入任何内容。")
+            continue
+        if not key.startswith("sk-"):
+            # 只提醒不拦截：别的 OpenAI 兼容网关前缀可能不是 sk-
+            print(f'  ⚠ 这串不是以 "sk-" 开头（你输入的是 {key[:6]}...）。'
+                  "DeepSeek 的 key 一定以 sk- 开头，确认一下有没有粘错东西。")
+        os.environ["DEEPSEEK_API_KEY"] = key
+        print(f"  ✅ 已读入：{key[:6]}...{key[-4:]}   （尾 4 位 {key[-4:]} 对不上就重跑一次）")
+        print()
+        print("  想永久保存（在 PowerShell 里执行一次，然后关掉窗口重开）：")
+        print("     setx DEEPSEEK_API_KEY \"你的完整key\"")
+        print()
+        return True
+    print("  连续几次都没读到 key，改为**离线模式**启动"
+          "（功能正常，只是回答由原文摘录组成）。\n")
+    return False
 
 
 def build_engine(args: argparse.Namespace) -> RagEngine:
@@ -146,6 +203,10 @@ def build_engine(args: argparse.Namespace) -> RagEngine:
     t0 = time.time()
     engine = RagEngine(chunks, config=cfg, llm=llm, embedder=embedder)
     engine.build_ms = int((time.time() - t0) * 1000)  # type: ignore[attr-defined]
+    # Web 端要"开关只有真的能用才可拨"，所以启动时真发一次最廉价的请求。
+    # 只判断"有没有配 key"是不够的：key 写错时开关照样能拨，然后每题静默降级。
+    if getattr(args, "web", False) and llm is not None:
+        engine.llm_status = probe_llm(cfg)  # type: ignore[attr-defined]
     return engine
 
 
@@ -381,6 +442,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--ask", action="store_true", help="单次提问模式")
     p.add_argument("--chat", action="store_true", help="强制进入交互模式")
     p.add_argument("--llm", action="store_true", help="启用大模型生成（需 API key）")
+    p.add_argument("--ask-key", action="store_true",
+                   help="没检测到 API key 时，用中文提示引导你粘贴一次（写进当前进程，只对本次有效）")
     p.add_argument("--embeddings", action="store_true", help="启用语义向量检索（需 embedding key）")
     p.add_argument("--offline", action="store_true", help="强制离线：不调用任何网络接口")
     p.add_argument("--corpus", default=str(ROOT / "data" / "corpus"), help="语料目录")
@@ -400,6 +463,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     args = p.parse_args(argv)
+
+    # --ask-key 必须在 build_engine **之前**：Config.from_env 是在构造引擎时读环境变量的，
+    # 所以 key 要先写进 os.environ 才会生效（顺序错了就等于没配）。
+    if args.ask_key and not args.offline and not offline_requested():
+        if os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("CAMPUS_RAG_API_KEY"):
+            print(f"[提示] 已经检测到 API key（{_mask_key(os.environ.get('DEEPSEEK_API_KEY') or os.environ.get('CAMPUS_RAG_API_KEY'))}），不再询问。")
+        elif not prompt_for_api_key():
+            args.llm = False  # 没拿到 key 就老实走离线，别让 --llm 变成一句空话
 
     engine = build_engine(args)
 
