@@ -15,11 +15,42 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict
 
+from .config import llm_disabled_reason, offline_requested
 from .engine import RagEngine
 from .qa_logger import log_answer
 
 UI_PATH = Path(__file__).resolve().parent / "ui.html"
 _LOCK = threading.Lock()
+
+
+def build_info_payload(engine: RagEngine) -> Dict[str, Any]:
+    """`/api/info` 的响应体。
+
+    单独抽成函数是为了可测——这里踩过一个真实的坑：
+    前端徽章原先读 `config.llm_api_key`（"有没有配 key"）来决定显示"大模型生成 开/关"，
+    而真正的开关是 `use_llm`。于是"配了 key 但启动时没加 --llm"时，
+    页面右上角亮着绿灯写"开"，下面每条回答却都是"离线抽取式降级"——
+    用户看到的就是"我明明配了 API，为什么还是离线模式"。
+
+    现在把**结论**（llm_enabled / llm_reason）由后端算好交给前端，前端不再自己猜；
+    判断口径也只有 `config.llm_disabled_reason` 这一处（同一个教训见 bug 6）。
+    """
+    cfg = engine.cfg
+    config = cfg.to_dict()
+    # 把两个 key 字段整个摘掉：它们在 to_dict 里已被脱敏成 "***"，
+    # 浏览器拿不到真值、却会因为"非空"而误判（旧徽章就是这么被骗的）。
+    # 命令行 --info 早就不打印这两个字段了，这里与它保持一致。
+    for secret in ("llm_api_key", "embed_api_key"):
+        config.pop(secret, None)
+    return {
+        "chunks": len(engine.chunks),
+        "docs": sorted({c.source for c in engine.chunks}),
+        "config": config,
+        "semantic_enabled": engine.retriever.semantic_enabled,
+        "llm_enabled": bool(cfg.use_llm),
+        "llm_model": cfg.llm_model,
+        "llm_reason": llm_disabled_reason(cfg, offline=offline_requested()),
+    }
 
 
 def _build_payload(engine: RagEngine, question: str) -> Dict[str, Any]:
@@ -66,13 +97,11 @@ def make_handler(engine: RagEngine):
                 self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
                 return
             if self.path == "/api/info":
-                stats = {
-                    "chunks": len(engine.chunks),
-                    "docs": sorted({c.source for c in engine.chunks}),
-                    "config": engine.cfg.to_dict(),
-                    "semantic_enabled": engine.retriever.semantic_enabled,
-                }
-                self._send(200, json.dumps(stats, ensure_ascii=False).encode("utf-8"), "application/json")
+                self._send(
+                    200,
+                    json.dumps(build_info_payload(engine), ensure_ascii=False).encode("utf-8"),
+                    "application/json",
+                )
                 return
             if self.path == "/health":
                 self._send(200, b'{"ok":true}', "application/json")

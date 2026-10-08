@@ -107,12 +107,16 @@ function withCites(text){
 async function loadBadges(){
   try{
     const r = await fetch("/api/info"); const d = await r.json();
-    const llm = (d.config.llm_api_key ? "已配 key" : "未配 key");
+    // 大模型徽章必须看 use_llm（真正的开关），不能看"有没有配 key"：
+    // 配了 key 但没加 --llm 时，旧写法会亮绿灯说"开"，而每条回答都是"离线抽取式降级"。
+    const llmOn = !!d.llm_enabled;
+    const llmTxt = llmOn ? `开 · ${esc(d.llm_model||"")}`
+                         : `关 · ${esc(d.llm_reason||"未启用")}`;
     const b = [
       `<span class="badge">知识块 <b>${d.chunks}</b></span>`,
       `<span class="badge">文档 <b>${d.docs.length}</b></span>`,
       `<span class="badge ${d.semantic_enabled?'on':'off'}">语义向量 <b>${d.semantic_enabled?'开':'关'}</b></span>`,
-      `<span class="badge ${llm==='已配 key'?'on':'off'}">大模型生成 <b>${llm==='已配 key'?'开':'离线降级'}</b></span>`,
+      `<span class="badge ${llmOn?'on':'off'}" title="${llmOn?'已启用大模型生成':'未启用：'+esc(d.llm_reason||'')+'（想启用见 README §6.1）'}">大模型生成 <b>${llmTxt}</b></span>`,
       `<span class="badge">拒答阈值 <b>${d.config.answer_threshold}</b></span>`
     ];
     $("#badges").innerHTML = b.join("");

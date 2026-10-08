@@ -27,6 +27,25 @@ def offline_requested() -> bool:
     return _env_flag("CAMPUS_RAG_OFFLINE")
 
 
+def llm_disabled_reason(cfg: "Config", offline: bool = False) -> str:
+    """用一句人话解释"大模型为什么没启用"，没启用时返回空串。
+
+    为什么要有这么个函数：这个坑被踩了不止一次——**"配了 key"≠"启用了"**。
+    而且判断口径必须只有一处，否则又会像 bug 6 那样两处各说各话：
+    CLI 的 --info、启动横幅、Web 页面的徽章，全都调它。
+
+    注意推导链：use_llm=False 且 key 存在、又不在离线状态 ⟹ 就是没加 --llm
+    （因为 build_engine 里 --llm 是 or 短路的第一项，加了就一定是 True）。
+    """
+    if cfg.use_llm:
+        return ""
+    if offline:
+        return "强制离线"
+    if not cfg.llm_api_key:
+        return "未配置 API key"
+    return "未加 --llm"
+
+
 @dataclass
 class Config:
     # --- 分块 ---

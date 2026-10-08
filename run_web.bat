@@ -8,7 +8,7 @@ echo   Campus RAG Demo  (Campus Document Q and A)
 echo ============================================================
 echo.
 echo   [1] Offline  - no internet, no API key needed  (recommended)
-echo   [2] LLM mode - needs DEEPSEEK_API_KEY
+echo   [2] LLM mode - needs DEEPSEEK_API_KEY, gives model-written answers
 echo   [3] Run evaluation only  (show metrics)
 echo.
 set /p choice=Choose [1/2/3], press Enter for 1:
@@ -20,6 +20,9 @@ if "%choice%"=="2" goto llmon
 goto offline
 
 :offline
+if not "%DEEPSEEK_API_KEY%"=="" echo   [note] DEEPSEEK_API_KEY is set, but OFFLINE mode ignores it.
+if not "%DEEPSEEK_API_KEY%"=="" echo          To actually use the API, start again and choose 2.
+if not "%DEEPSEEK_API_KEY%"=="" echo.
 echo   [info] Starting in OFFLINE mode. Browser will open automatically...
 echo   [tip ] Press Ctrl+C or close this window to stop the server.
 echo.

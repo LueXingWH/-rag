@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 import ask  # noqa: E402
 from ask import parse_chat_command  # noqa: E402
 from bench import fact_stats  # noqa: E402
-from campus_rag.config import Config, offline_requested  # noqa: E402
+from campus_rag.config import Config, llm_disabled_reason, offline_requested  # noqa: E402
 from campus_rag.engine import Answer  # noqa: E402
 from campus_rag.evaluate import run_eval  # noqa: E402
 from campus_rag.llm import LLMError  # noqa: E402
@@ -299,6 +299,74 @@ class OfflineConfigTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"CAMPUS_RAG_OFFLINE": "1"}):
             cfg = Config.from_env(use_llm=True, llm_api_key="sk-dummy")
             self.assertFalse(cfg.use_llm)
+
+
+class LlmStatusTest(unittest.TestCase):
+    """bug：Web 徽章把"配了 key"当成"大模型已启用"。
+
+    现象（用户真实反馈）：右上角徽章亮着绿灯写"大模型生成 开"，
+    下面每条回答却是"离线抽取式降级"——于是"我明明配了 API，怎么还是离线模式"。
+    根因：ui.html 读的是 `config.llm_api_key`（有没有 key），而不是 `use_llm`（真开关）。
+    修法：后端把结论 llm_enabled / llm_reason 算好给前端，前端不再自己猜。
+    """
+
+    def _cfg(self, api_key: str = "", use_llm: bool = False) -> Config:
+        cfg = Config()
+        cfg.llm_api_key = api_key
+        cfg.use_llm = use_llm
+        return cfg
+
+    def test_reason_is_empty_when_enabled(self) -> None:
+        self.assertEqual(llm_disabled_reason(self._cfg("sk-x", True)), "")
+
+    def test_reason_distinguishes_the_three_causes(self) -> None:
+        self.assertEqual(llm_disabled_reason(self._cfg("sk-x", False)), "未加 --llm")
+        self.assertEqual(llm_disabled_reason(self._cfg("", False)), "未配置 API key")
+        self.assertEqual(llm_disabled_reason(self._cfg("sk-x", False), offline=True), "强制离线")
+
+    def test_info_payload_reports_the_real_switch(self) -> None:
+        """关键断言：有 key 但没启用时，llm_enabled 必须是 False（旧逻辑会报 True）。"""
+        import campus_rag.web as web
+
+        engine = SimpleNamespace(
+            cfg=self._cfg("sk-dummy", False),
+            chunks=[SimpleNamespace(source="08-x.md")],
+            retriever=SimpleNamespace(semantic_enabled=False),
+        )
+        payload = web.build_info_payload(engine)
+        self.assertFalse(payload["llm_enabled"])
+        self.assertEqual(payload["llm_reason"], "未加 --llm")
+        # 脱敏后的 "***" 仍然"非空"——正是它能骗到旧徽章。整个字段摘掉，断掉这条路。
+        self.assertNotIn("llm_api_key", payload["config"])
+        self.assertNotIn("embed_api_key", payload["config"])
+
+        engine.cfg.use_llm = True
+        payload = web.build_info_payload(engine)
+        self.assertTrue(payload["llm_enabled"])
+        self.assertEqual(payload["llm_reason"], "")
+
+    def test_ui_badge_does_not_guess_from_api_key(self) -> None:
+        """前端不许再从 `llm_api_key` 推断开关——那正是这个 bug 的形状。"""
+        ui = (ROOT / "campus_rag" / "ui.html").read_text(encoding="utf-8")
+        self.assertIn("llm_enabled", ui)
+        self.assertNotIn("config.llm_api_key", ui)
+
+    def test_startup_hint_says_which_it_is(self) -> None:
+        args = argparse.Namespace(llm=True, info=False, offline=False)
+        self.assertIn("--llm", ask.llm_status_hint(args, self._cfg("", False), offline=False))
+        # 要了 LLM 却拿不到 → 必须出声
+        hint = ask.llm_status_hint(args, self._cfg("", False), offline=False)
+        self.assertIn("没有启用", hint)
+        # 没要、但配了 key → 一句提示就能省一次排查
+        hint = ask.llm_status_hint(argparse.Namespace(llm=False), self._cfg("sk-x", False), offline=False)
+        self.assertIn("没加 --llm", hint)
+        # 启用了 → 告知用的是哪个模型
+        hint = ask.llm_status_hint(argparse.Namespace(llm=True), self._cfg("sk-x", True), offline=False)
+        self.assertIn("deepseek-flash", hint)
+        # 什么都没配的纯离线演示 → 不啰嗦
+        self.assertEqual(
+            ask.llm_status_hint(argparse.Namespace(llm=False), self._cfg("", False), offline=False), ""
+        )
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ def _use_utf8_console() -> None:
 
 _use_utf8_console()
 
-from campus_rag.config import Config, offline_requested  # noqa: E402
+from campus_rag.config import Config, llm_disabled_reason, offline_requested  # noqa: E402
 from campus_rag.data import load_corpus  # noqa: E402
 from campus_rag.engine import RagEngine  # noqa: E402
 from campus_rag.evaluate import format_report, load_eval_set, run_eval  # noqa: E402
@@ -53,6 +53,38 @@ BANNER = r"""
  | (__ / _ \| .` || |  _/   /  |   // _ \ (_ |  Retrieval-Augmented Generation
   \___/_/ \_\_|\_||_|_| |_|_\  |_|_/_/ \_\___|  零依赖 · 可引用 · 会拒答
 """
+
+
+def llm_status_hint(args: argparse.Namespace, cfg: Config, offline: bool) -> str:
+    """启动时说清"大模型这一层到底是开还是关、为什么"，没事要说是空串。
+
+    这是被同一个坑逼出来的：**"配了 key" ≠ "启用了"**。
+    最常见的两种翻车——
+    ① 设了 DEEPSEEK_API_KEY 却忘了加 --llm → 静默走离线抽取式，用户以为 key 坏了；
+    ② 加了 --llm 但环境里其实没有 key → 同样静默降级。
+    两种都只表现为"回答看起来像离线模式"，光看答案是查不出来的。
+    抽成纯函数是为了能被单元测试直接盯住（同 parse_chat_command 的理由）。
+    """
+    asked = bool(getattr(args, "llm", False))
+    reason = llm_disabled_reason(cfg, offline=offline)
+    if not cfg.use_llm:
+        if asked:
+            # 用户明确要了 LLM 却没拿到，必须出声（否则他只会看到"怎么还是离线"）
+            return f"[注意] 你加了 --llm，但大模型没有启用（{reason}），本次回答走离线抽取式。"
+        if cfg.llm_api_key and not offline:
+            # 没要、但明明配了 key：一句提示就能省掉一次排查
+            return "[提示] 检测到大模型 API key，但没加 --llm，本次仍走离线抽取式（想用大模型请加 --llm）。"
+        return ""
+    return f"[提示] 大模型生成已启用：{cfg.llm_model}（{cfg.llm_base_url}）"
+
+
+def _announce_llm_status(args: argparse.Namespace, cfg: Config) -> None:
+    """把 llm_status_hint 打到屏幕上。--info 有自己的详细版，避免两处重复。"""
+    if getattr(args, "info", False):
+        return
+    hint = llm_status_hint(args, cfg, offline=bool(getattr(args, "offline", False)) or offline_requested())
+    if hint:
+        print(hint)
 
 
 def build_engine(args: argparse.Namespace) -> RagEngine:
@@ -71,6 +103,8 @@ def build_engine(args: argparse.Namespace) -> RagEngine:
         cfg.use_embeddings = False
     if getattr(args, "extractive_chunks", None):
         RagEngine.extractive_chunks = args.extractive_chunks
+
+    _announce_llm_status(args, cfg)
 
     chunks = load_corpus(cfg.corpus_dir, max_len=cfg.chunk_size, overlap=cfg.chunk_overlap)
     if not chunks:
@@ -220,13 +254,16 @@ def cmd_info(engine: RagEngine, args: argparse.Namespace) -> int:
     # "离线意图"必须和 build_engine 同源判断：命令行 --offline 与 CAMPUS_RAG_OFFLINE 都算。
     # 只在一边判断，就会出现"设了强制离线、自检却照样联网"的漏网路径。
     offline = bool(getattr(args, "offline", False)) or offline_requested()
+    reason = llm_disabled_reason(cfg, offline=offline)  # 判断口径与启动提示、Web 徽章共用
     print(f"  大模型生成：{'已启用 ' + cfg.llm_model if cfg.use_llm else '未启用（走离线抽取式降级）'}")
-    if offline:
+    if reason == "强制离线":
         print("    ↳ 已强制离线（--offline / CAMPUS_RAG_OFFLINE）：本次不调用任何网络接口")
-    elif cfg.llm_api_key and not cfg.use_llm:
+    elif reason == "未加 --llm":
         # 这是最容易踩的坑：key 设了、却没加 --llm，于是静默走离线抽取式。
         # 不提示的话，用户会以为"接了 API 还是老样子"，然后去怀疑 key 有问题。
         print("    ↳ 已检测到 API key，但本次没启用：加 --llm 即用")
+    elif reason:
+        print("    ↳ 未配置 API key：设 DEEPSEEK_API_KEY 后要加 --llm 才启用；用 CAMPUS_RAG_API_KEY 会自动启用")
     print(f"  语义向量通道：{'已启用 ' + cfg.embed_model if cfg.use_embeddings else '未启用（走 BM25+TF-IDF 融合）'}")
     if offline:
         print("  API 自检: 已跳过（离线模式下不调用任何网络接口）")
@@ -237,7 +274,7 @@ def cmd_info(engine: RagEngine, args: argparse.Namespace) -> int:
         except LLMError as e:
             print(f"  API 自检: 失败 - {e}")
     else:
-        print("  API 自检: 未配置 key（设 DEEPSEEK_API_KEY 后要加 --llm 才启用；用 CAMPUS_RAG_API_KEY 会自动启用）")
+        print("  API 自检: 未配置 key，跳过")
     print("\n【提示】")
     print("  离线演示： python ask.py --web            （无需网络，必不翻车）")
     print("  联网增强： $env:DEEPSEEK_API_KEY='sk-xxx'; python ask.py --web --llm")
