@@ -43,7 +43,7 @@ answer = engine.answer("南海校区宿舍晚上几点关门？")
 
 | 类型 | 定义位置 | 装什么 | 由谁产生 → 由谁消费 |
 | --- | --- | --- | --- |
-| `Config` | [config.py L15](campus_rag/config.py#L15) | 所有参数（阈值、块大小…） | `Config.from_env()` → 全项目 |
+| `Config` | [config.py L31](campus_rag/config.py#L31) | 所有参数（阈值、块大小…） | `Config.from_env()` → 全项目 |
 | `Chunk` | [data.py L25](campus_rag/data.py#L25) | 一个**文本块** + 它的来源/标题路径 | `chunk_markdown()` → retriever / engine / ui |
 | `ScoredChunk` | [retriever.py L83](campus_rag/retriever.py#L83) | `Chunk` + 分数 + 命中的词 + 预览片段 | `retriever.search()` → `engine._confidence` / `_extractive` |
 | `Answer` | [engine.py L48](campus_rag/engine.py#L48) | 答案 + 置信度 + `mode` + 来源列表 | `engine.answer()` → CLI / web / eval / 日志 |

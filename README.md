@@ -175,6 +175,9 @@ python ask.py --llm --model deepseek-v4-pro    # 换更强的模型
 - 成本量级：单次问答约 2k 输入 + 0.3k 输出 token。按 flash 未命中输入 1 元/百万、
   输出 4 元/百万计，**单次 ≈ 0.003 元**，100 次问答不到 4 毛钱。
 - 自带 `python ask.py --info` 会调 `/models` 自检 key 是否可用。
+  如果它显示"已检测到 API key，但本次没启用"，说明你漏了 `--llm`——**只设 key 不会自动启用**
+  （会自动启用的只有 `CAMPUS_RAG_API_KEY` 这个名字）。
+  加 `--offline`（或设 `CAMPUS_RAG_OFFLINE=1`）时自检会**跳过**，一个网络请求都不发。
 
 ### 6.2 语义向量通道（解决"大白话提问"漏答）
 
