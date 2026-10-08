@@ -111,7 +111,11 @@ rem Reject empty and whitespace-only input; only a real key may start LLM mode.
 if "%DEEPSEEK_API_KEY%"=="" goto offline
 if "%DEEPSEEK_API_KEY: =%"=="" goto offline
 echo.
-echo   [info] Key accepted for this window only.
+echo   [info] Key accepted for this window only: %DEEPSEEK_API_KEY:~0,6%...%DEEPSEEK_API_KEY:~-4%
+rem Echo the masked key so a bad paste (half a key, extra text) is visible immediately.
+rem DeepSeek keys always start with "sk-" - warn, but do not block: other
+rem OpenAI-compatible providers may use a different prefix.
+if not "%DEEPSEEK_API_KEY:~0,3%"=="sk-" echo   [warn] That does not start with "sk-" - check the paste? Prefix keys do differ per provider.
 goto llmon
 
 :eval
