@@ -688,6 +688,19 @@ class LlmToggleTest(unittest.TestCase):
         self.assertIn("use_llm: llmAvailable ? useLlm : false", ui)   # 每题带上开关
         self.assertIn("disabled", ui)                       # 不可用时禁用
 
+    def test_switch_state_is_not_persisted(self) -> None:
+        """开关的初始状态必须**只看服务端**，不许读本地记录。
+
+        实测踩过：把选择存进 localStorage 后，存过的 "关" 会在下次带 --llm 启动时
+        把服务端的"开"悄悄压掉——用户在 bat 里选了 [2]，页面开关却还是"关"，
+        每题都发 use_llm:false，于是"用 bat 还是用不了大模型"。
+        （注释里可以提 localStorage 解释原因，但代码不许读写。）
+        """
+        ui = (ROOT / "campus_rag" / "ui.html").read_text(encoding="utf-8")
+        self.assertNotIn("localStorage.getItem", ui)
+        self.assertNotIn("localStorage.setItem", ui)
+        self.assertIn("useLlm = llmAvailable && llmDefault", ui)
+
 
 class RunWebBatTest(unittest.TestCase):
     """`run_web.bat` 由 cmd.exe 执行，Python 测试跑不到它，只能盯它的**文件性质**。

@@ -140,40 +140,42 @@ async function loadBadges(){
 
 /* ── 「是否使用大模型」开关 ──────────────────────────────────────────────
    llmAvailable：服务端配了 key 且没被强制离线 → 开关可拨；否则禁用并说明原因。
-   useLlm：本次会话每题是否走大模型，随请求发给后端（后端按题生效，不改进程配置）。
-   选择记在 localStorage，刷新后仍在；但若服务端已经没有 key，会被强制关掉。 */
+   llmDefault  ：服务端的默认（--llm / CAMPUS_RAG_API_KEY 决定）。
+   useLlm      ：本次页面会话每题是否走大模型，随请求发给后端（后端按题生效）。
+   注意**不持久化**：曾经把选择存进 localStorage，结果存过的"关"会在下次用
+   --llm 启动时悄悄压掉服务端的"开"——"我在 bat 里选了 2，页面还是关"就是这么来的。
+   开关状态属于一次页面会话，刷新回到服务端默认，这样永远不会和启动参数打架。 */
 let llmAvailable = false;
 let llmReason = "";
+let llmDefault = false;
 let useLlm = false;
-const LS_KEY = "campusrag.use_llm";
 
 function renderLlmToggle(){
   const box = $("#llmtoggle");
   const cls = "switch" + (useLlm && llmAvailable ? " on" : "") + (llmAvailable ? "" : " disabled");
   const state = !llmAvailable ? "不可用" : (useLlm ? "开" : "关");
-  const note = !llmAvailable
-    ? `未配置 API key（或已强制离线）${llmReason? "：" + esc(llmReason):""}`
-    : (useLlm ? "回答由大模型组织，检索结果严格接地" : "只做原文摘录，不调用任何网络接口");
+  let note;
+  if(!llmAvailable) note = `未配置 API key（或已强制离线）${llmReason? "：" + esc(llmReason):""}`;
+  else if(useLlm)   note = "回答由大模型组织，检索结果严格接地";
+  else if(llmDefault) note = "你在这里关掉了它 —— 服务端默认是开的";
+  else              note = "只做原文摘录，不调用任何网络接口";
   box.innerHTML = `
     <span class="${cls}" id="llmswitch" title="${llmAvailable?'点击切换':'需要先配置 DEEPSEEK_API_KEY'}">
       <span class="knob"></span>使用大模型：${state}
     </span>
     <span class="note">${note}</span>`;
   const el = $("#llmswitch");
-  if(llmAvailable) el.onclick = () => {
-    useLlm = !useLlm;
-    try{ localStorage.setItem(LS_KEY, useLlm ? "1" : "0"); }catch(e){}
-    renderLlmToggle();
-  };
+  if(llmAvailable) el.onclick = () => { useLlm = !useLlm; renderLlmToggle(); };
 }
 
 function applyLlmAvailability(info){
   llmAvailable = !!info.llm_available;
   llmReason = info.llm_reason || "";
-  let stored = null;
-  try{ stored = localStorage.getItem(LS_KEY); }catch(e){}
-  // 优先用用户上次的选择；没存过就用服务端的默认（--llm / CAMPUS_RAG_API_KEY）
-  useLlm = llmAvailable ? (stored === null ? !!info.llm_enabled : stored === "1") : false;
+  llmDefault = !!info.llm_enabled;
+  // 初始状态**只看服务端**（--llm / CAMPUS_RAG_API_KEY 决定的默认），不读任何本地记录：
+  // 本地存过的"关"会在下次带 --llm 启动时把服务端的"开"压掉，
+  // 那就是"我在 bat 里选了 2，页面开关还是关"的来源。
+  useLlm = llmAvailable && llmDefault;
   renderLlmToggle();
 }
 

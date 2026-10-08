@@ -57,11 +57,31 @@ goto end
 
 :llmon
 if "%DEEPSEEK_API_KEY%"=="" goto nokey
+rem Check the API BEFORE starting the server: it is much easier to read a failure
+rem here than to wonder why every answer in the browser looks like offline mode.
+echo   [info] Checking the API connection first - this makes one real request...
+echo.
+py -3 ask.py --check-llm --llm
+if errorlevel 1 goto llmfail
+echo.
 echo   [info] Starting with LLM ON by default. Browser will open automatically...
 echo.
 py -3 ask.py --web --llm
 if errorlevel 1 goto fail
 goto end
+
+:llmfail
+echo.
+echo   [warn] The API check above FAILED - this is why LLM mode would not work.
+echo          Read the reason printed above. Then:
+echo            - key wrong or expired  -^> get a new one at platform.deepseek.com
+echo            - balance / quota      -^> top up the account
+echo            - cannot connect       -^> proxy, firewall or offline network
+echo.
+echo          Press Enter to start in OFFLINE mode anyway, or close this window.
+echo.
+pause
+goto offline
 
 :nokey
 echo   [warn] No DEEPSEEK_API_KEY in this window, so LLM mode cannot start yet.
@@ -78,11 +98,8 @@ rem Reject empty and whitespace-only input; only a real key may start LLM mode.
 if "%DEEPSEEK_API_KEY%"=="" goto offline
 if "%DEEPSEEK_API_KEY: =%"=="" goto offline
 echo.
-echo   [info] Key accepted for this window only. Starting with LLM ON...
-echo.
-py -3 ask.py --web --llm
-if errorlevel 1 goto fail
-goto end
+echo   [info] Key accepted for this window only.
+goto llmon
 
 :eval
 echo   Running offline evaluation (22 questions)...
