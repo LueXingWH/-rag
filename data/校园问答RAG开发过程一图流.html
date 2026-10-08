@@ -1,0 +1,176 @@
+<html style="margin:0;padding:0;">
+<title>校园问答 RAG 项目开发过程一图流</title>
+<div style="width:1080px;margin:0 auto;background:#f4f7fb;font-family:'PingFang SC','Microsoft YaHei','Hiragino Sans GB',-apple-system,sans-serif;color:#16324a;padding:56px 64px 60px;box-sizing:border-box;">
+
+  <!-- ======= 头部 ======= -->
+  <div style="text-align:center;padding-bottom:44px;">
+    <div style="display:inline-block;background:#16324a;color:#ffffff;font-size:22px;font-weight:600;padding:10px 28px;border-radius:999px;letter-spacing:2px;">项目开发全过程</div>
+    <h1 style="font-size:64px;font-weight:800;margin:26px 0 10px;letter-spacing:1px;line-height:1.15;">校园问答 RAG · 一图流</h1>
+    <div style="font-size:26px;color:#5a7088;margin-bottom:38px;">从"一天能做完"的想法，到按版本迭代的落地项目</div>
+
+    <!-- 概览卡 -->
+    <div style="display:flex;gap:24px;text-align:left;">
+      <div style="flex:1;background:#ffffff;border-radius:20px;padding:26px 30px;box-shadow:0 4px 16px rgba(22,50,74,0.06);">
+        <div style="font-size:20px;color:#8a9bb0;margin-bottom:10px;">项目方向</div>
+        <div style="font-size:28px;font-weight:700;">校园问答 RAG</div>
+      </div>
+      <div style="flex:1;background:#ffffff;border-radius:20px;padding:26px 30px;box-shadow:0 4px 16px rgba(22,50,74,0.06);">
+        <div style="font-size:20px;color:#8a9bb0;margin-bottom:10px;">知识库</div>
+        <div style="font-size:28px;font-weight:700;">华师南海校区校规校纪等</div>
+      </div>
+      <div style="flex:1;background:#ffffff;border-radius:20px;padding:26px 30px;box-shadow:0 4px 16px rgba(22,50,74,0.06);">
+        <div style="font-size:20px;color:#8a9bb0;margin-bottom:10px;">项目状态</div>
+        <div style="font-size:28px;font-weight:700;">初版完成 · 持续迭代</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= 阶段 01 ======= -->
+  <div style="background:#ffffff;border-radius:24px;padding:38px 44px 34px;box-shadow:0 6px 22px rgba(22,50,74,0.07);border-left:10px solid #2563eb;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:20px;">
+        <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#2563eb,#38bdf8);color:#fff;font-size:28px;font-weight:800;display:flex;align-items:center;justify-content:center;">01</div>
+        <div style="font-size:36px;font-weight:800;">定方向</div>
+      </div>
+      <div style="background:#16324a;color:#fff;font-size:20px;font-weight:600;padding:9px 22px;border-radius:999px;">DeepSeek Harness</div>
+    </div>
+    <ul style="margin:0 0 22px;padding-left:4px;list-style:none;">
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">向 DeepSeek Harness 征集"一天能做完"的项目方向</li>
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">多方案比较后，确定制作校园问答 RAG</li>
+    </ul>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;border-top:1px dashed #e3ebf4;padding-top:20px;">
+      <span style="background:#e8f1fa;color:#2563eb;font-size:20px;font-weight:600;padding:8px 22px;border-radius:999px;">✓ 产出：项目方向</span>
+    </div>
+  </div>
+
+  <!-- 箭头 -->
+  <div style="text-align:center;padding:18px 0;color:#9db2c8;font-size:34px;font-weight:700;">▼</div>
+
+  <!-- ======= 阶段 02 ======= -->
+  <div style="background:#ffffff;border-radius:24px;padding:38px 44px 34px;box-shadow:0 6px 22px rgba(22,50,74,0.07);border-left:10px solid #0ea5e9;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:20px;">
+        <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#0ea5e9,#22d3ee);color:#fff;font-size:28px;font-weight:800;display:flex;align-items:center;justify-content:center;">02</div>
+        <div style="font-size:36px;font-weight:800;">搭初版</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;">
+        <div style="background:#16324a;color:#fff;font-size:20px;font-weight:600;padding:9px 22px;border-radius:999px;">DeepSeek Harness</div>
+        <div style="display:flex;gap:10px;">
+          <span style="background:#e8eef5;color:#334155;font-size:17px;font-weight:700;padding:6px 16px;border-radius:999px;border:1px solid #cbd7e4;">Python</span>
+          <span style="background:#e8eef5;color:#334155;font-size:17px;font-weight:700;padding:6px 16px;border-radius:999px;border:1px solid #cbd7e4;">离线模型</span>
+        </div>
+      </div>
+    </div>
+    <ul style="margin:0 0 22px;padding-left:4px;list-style:none;">
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">完成初版 RAG 流程 + 自建评测体系</li>
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">编写 Demo 用于功能检测</li>
+    </ul>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;border-top:1px dashed #e3ebf4;padding-top:20px;">
+      <span style="background:#e8f6fb;color:#0ea5e9;font-size:20px;font-weight:600;padding:8px 22px;border-radius:999px;">✓ RAG 初版</span>
+      <span style="background:#e8f6fb;color:#0ea5e9;font-size:20px;font-weight:600;padding:8px 22px;border-radius:999px;">✓ 自建评测</span>
+      <span style="background:#e8f6fb;color:#0ea5e9;font-size:20px;font-weight:600;padding:8px 22px;border-radius:999px;">✓ Demo</span>
+    </div>
+  </div>
+
+  <!-- 箭头 -->
+  <div style="text-align:center;padding:18px 0;color:#9db2c8;font-size:34px;font-weight:700;">▼</div>
+
+  <!-- ======= 阶段 03 ======= -->
+  <div style="background:#ffffff;border-radius:24px;padding:38px 44px 34px;box-shadow:0 6px 22px rgba(22,50,74,0.07);border-left:10px solid #14b8a6;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:20px;">
+        <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#14b8a6,#2dd4bf);color:#fff;font-size:28px;font-weight:800;display:flex;align-items:center;justify-content:center;">03</div>
+        <div style="font-size:36px;font-weight:800;">接数据</div>
+      </div>
+      <div style="background:#0d9488;color:#fff;font-size:20px;font-weight:600;padding:9px 22px;border-radius:999px;">WorkBuddy</div>
+    </div>
+    <ul style="margin:0 0 22px;padding-left:4px;list-style:none;">
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">用 WorkBuddy 接入华师综合服务平台</li>
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">导出南海校区校规校纪等信息，整理入数据库</li>
+    </ul>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;border-top:1px dashed #e3ebf4;padding-top:20px;">
+      <span style="background:#e6f5f3;color:#0d9488;font-size:20px;font-weight:600;padding:8px 22px;border-radius:999px;">✓ 校园知识库（校规校纪等）</span>
+    </div>
+  </div>
+
+  <!-- 箭头 -->
+  <div style="text-align:center;padding:18px 0;color:#9db2c8;font-size:34px;font-weight:700;">▼</div>
+
+  <!-- ======= 阶段 04 ======= -->
+  <div style="background:#ffffff;border-radius:24px;padding:38px 44px 34px;box-shadow:0 6px 22px rgba(22,50,74,0.07);border-left:10px solid #f59e0b;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:20px;">
+        <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#fff;font-size:28px;font-weight:800;display:flex;align-items:center;justify-content:center;">04</div>
+        <div style="font-size:36px;font-weight:800;">读代码</div>
+      </div>
+      <div style="background:#ea580c;color:#fff;font-size:20px;font-weight:600;padding:9px 22px;border-radius:999px;">豆包</div>
+    </div>
+    <ul style="margin:0 0 22px;padding-left:4px;list-style:none;">
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">用豆包识别代码，辅助理解项目实现</li>
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">梳理代码逻辑，为后续维护打基础</li>
+    </ul>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;border-top:1px dashed #e3ebf4;padding-top:20px;">
+      <span style="background:#fef3e2;color:#c2590a;font-size:20px;font-weight:600;padding:8px 22px;border-radius:999px;">✓ 代码逻辑梳理</span>
+    </div>
+  </div>
+
+  <!-- 箭头 -->
+  <div style="text-align:center;padding:18px 0;color:#9db2c8;font-size:34px;font-weight:700;">▼</div>
+
+  <!-- ======= 阶段 05 ======= -->
+  <div style="background:#ffffff;border-radius:24px;padding:38px 44px 34px;box-shadow:0 6px 22px rgba(22,50,74,0.07);border-left:10px solid #7c3aed;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:20px;">
+        <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;font-size:28px;font-weight:800;display:flex;align-items:center;justify-content:center;">05</div>
+        <div style="font-size:36px;font-weight:800;">管版本</div>
+      </div>
+      <div style="background:#ea580c;color:#fff;font-size:20px;font-weight:600;padding:9px 22px;border-radius:999px;">豆包</div>
+    </div>
+    <ul style="margin:0 0 22px;padding-left:4px;list-style:none;">
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">用豆包将项目存入 Git 仓库</li>
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">按版本迭代管理，便于回溯与协作</li>
+    </ul>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;border-top:1px dashed #e3ebf4;padding-top:20px;">
+      <span style="background:#f1eafd;color:#6d28d9;font-size:20px;font-weight:600;padding:8px 22px;border-radius:999px;">✓ Git 版本库</span>
+    </div>
+  </div>
+
+  <!-- 箭头 -->
+  <div style="text-align:center;padding:18px 0;color:#9db2c8;font-size:34px;font-weight:700;">▼</div>
+
+  <!-- ======= 阶段 06 ======= -->
+  <div style="background:#ffffff;border-radius:24px;padding:38px 44px 34px;box-shadow:0 6px 22px rgba(22,50,74,0.07);border-left:10px solid #10b981;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:20px;">
+        <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#10b981,#34d399);color:#fff;font-size:28px;font-weight:800;display:flex;align-items:center;justify-content:center;">06</div>
+        <div style="font-size:36px;font-weight:800;">贴实况</div>
+      </div>
+      <div style="background:#64748b;color:#fff;font-size:20px;font-weight:600;padding:9px 22px;border-radius:999px;">手动</div>
+    </div>
+    <ul style="margin:0 0 22px;padding-left:4px;list-style:none;">
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">手动修改问题示例</li>
+      <li style="font-size:24px;line-height:1.7;padding-left:30px;position:relative;">使问答贴合南海校区真实场景</li>
+    </ul>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;border-top:1px dashed #e3ebf4;padding-top:20px;">
+      <span style="background:#e7f6ee;color:#059669;font-size:20px;font-weight:600;padding:8px 22px;border-radius:999px;">✓ 南海实况问答示例</span>
+    </div>
+  </div>
+
+  <!-- ======= 底部总结 ======= -->
+  <div style="margin-top:46px;background:linear-gradient(135deg,#16324a,#1d4ed8);border-radius:24px;padding:36px 44px;color:#ffffff;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;">
+      <div style="font-size:24px;line-height:1.6;">
+        <div style="font-size:28px;font-weight:800;margin-bottom:6px;">一天跑通"方向 → 初版 → 数据 → 版本 → 实况"全链路</div>
+        <div style="color:#c7d8f2;">校园问答 RAG 初版完成，进入持续迭代阶段</div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;max-width:420px;justify-content:flex-end;">
+        <span style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.35);color:#fff;font-size:18px;font-weight:600;padding:8px 18px;border-radius:999px;">DeepSeek Harness</span>
+        <span style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.35);color:#fff;font-size:18px;font-weight:600;padding:8px 18px;border-radius:999px;">WorkBuddy</span>
+        <span style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.35);color:#fff;font-size:18px;font-weight:600;padding:8px 18px;border-radius:999px;">豆包</span>
+        <span style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.35);color:#fff;font-size:18px;font-weight:600;padding:8px 18px;border-radius:999px;">手动</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</html>
