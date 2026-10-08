@@ -84,6 +84,20 @@ def main() -> int:
         problems.append("没有任何 API key 环境变量。若你在别的窗口用过 $env:，那个变量"
                         "只属于那个窗口；双击 .bat 会新开进程，看不到它。")
         say("  ⚠ 结论：这个进程读不到任何 key —— 后面几步必然失败。")
+        say("")
+        say("     最可能的原因：你在某个 PowerShell 窗口里用过")
+        say('       $env:DEEPSEEK_API_KEY = "sk-..."')
+        say("     那个变量**只对那一个窗口有效**。双击 .bat、或另开一个 PowerShell，")
+        say("     都是新进程，看不到它。三种改法任选其一：")
+        say("")
+        say("       A. 最省事：双击 run_web.bat  ->  选 [2]")
+        say("         它会把 key 直接读进自己的进程，绕开所有继承问题（只对本次有效）")
+        say("       B. 就在设过 key 的那个 PowerShell 窗口里，接着敲：")
+        say("           python ask.py --web --llm")
+        say("         （设变量和启动程序**必须是同一个窗口**）")
+        say('       C. 永久生效： setx DEEPSEEK_API_KEY "sk-你的key"')
+        say("         然后**关掉这个窗口、重新开一个**再跑；若还看不到，")
+        say("         就注销重登或重启资源管理器（已运行的进程不会自动拿到新变量）")
     else:
         say(f"  ✅ 生效的变量：{hit[0]}（优先级 CAMPUS_RAG_API_KEY > DEEPSEEK_API_KEY > OPENAI_API_KEY）")
 
