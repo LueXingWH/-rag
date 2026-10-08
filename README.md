@@ -31,7 +31,8 @@ python calibrate.py                   # 只看拒答阈值的扫描曲线
 # ② 联网增强（可选：检索结果交给大模型组织成自然语言）
 $env:DEEPSEEK_API_KEY = "sk-xxxx"     # 见下方"可选增强"
 python ask.py --check-llm --llm       # 先自检：真发一次请求，报错会带完整诊断
-python ask.py --web --llm
+python ask.py --web --llm             # 默认开大模型
+python ask.py --web                   # 也可以：起来后在页面上用开关随时切换（配了 key 才可拨）
 ```
 
 Windows 用户可直接双击 `run_web.bat` 一键起服务（**选 [2] 才是 LLM 模式**；
@@ -182,6 +183,11 @@ python ask.py --llm --model deepseek-v4-pro    # 换更强的模型
   加 `--offline`（或设 `CAMPUS_RAG_OFFLINE=1`）时自检会**跳过**，一个网络请求都不发。
 - Web 页面右上角的"大模型生成"徽章显示的是**真实开关**，关着时会直接写明原因
   （`未配置 API key` / `未加 --llm` / `强制离线`），不会再出现"徽章说开、回答却降级"的矛盾。
+- **页面上有「使用大模型」开关**（输入框上方），**只在配了 API key 时可用**；
+  没配 key 或加了 `--offline` 时它是灰的，并写明原因。
+  开关是**按题生效**的（`engine.answer(use_llm=…)`，不改进程配置），选择记在浏览器里。
+  因此**起服务时不必再纠结加不加 `--llm`**：`python ask.py --web` 起来后随手拨一下就行；
+  `--llm` 只决定"默认是开还是关"。
 - **思维链默认关闭（`llm_thinking="disabled"`），这是刻意的**：DeepSeek V4 的 thinking
   **默认开启**且 effort 默认 `high`，思维链走 `reasoning_content`、答案走 `content`；
   而本项目 `max_tokens=700` 是留给"结论 + 依据"的，思维链一开就把它吃光，
