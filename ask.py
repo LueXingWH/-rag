@@ -39,7 +39,7 @@ def _use_utf8_console() -> None:
 
 _use_utf8_console()
 
-from campus_rag.config import Config  # noqa: E402
+from campus_rag.config import Config, offline_requested  # noqa: E402
 from campus_rag.data import load_corpus  # noqa: E402
 from campus_rag.engine import RagEngine  # noqa: E402
 from campus_rag.evaluate import format_report, load_eval_set, run_eval  # noqa: E402
@@ -217,16 +217,27 @@ def cmd_info(engine: RagEngine, args: argparse.Namespace) -> int:
             continue
         print(f"  {k} = {v}")
     print("\n【可选能力状态】")
+    # "离线意图"必须和 build_engine 同源判断：命令行 --offline 与 CAMPUS_RAG_OFFLINE 都算。
+    # 只在一边判断，就会出现"设了强制离线、自检却照样联网"的漏网路径。
+    offline = bool(getattr(args, "offline", False)) or offline_requested()
     print(f"  大模型生成：{'已启用 ' + cfg.llm_model if cfg.use_llm else '未启用（走离线抽取式降级）'}")
+    if offline:
+        print("    ↳ 已强制离线（--offline / CAMPUS_RAG_OFFLINE）：本次不调用任何网络接口")
+    elif cfg.llm_api_key and not cfg.use_llm:
+        # 这是最容易踩的坑：key 设了、却没加 --llm，于是静默走离线抽取式。
+        # 不提示的话，用户会以为"接了 API 还是老样子"，然后去怀疑 key 有问题。
+        print("    ↳ 已检测到 API key，但本次没启用：加 --llm 即用")
     print(f"  语义向量通道：{'已启用 ' + cfg.embed_model if cfg.use_embeddings else '未启用（走 BM25+TF-IDF 融合）'}")
-    if cfg.llm_api_key:
+    if offline:
+        print("  API 自检: 已跳过（离线模式下不调用任何网络接口）")
+    elif cfg.llm_api_key:
         try:
             models = LLMClient(cfg.llm_base_url, cfg.llm_api_key, cfg.llm_model).list_models()
             print(f"  API 自检: 可用，模型 {models[:6]}")
         except LLMError as e:
             print(f"  API 自检: 失败 - {e}")
     else:
-        print("  API 自检: 未配置 key（设置 DEEPSEEK_API_KEY 后自动启用）")
+        print("  API 自检: 未配置 key（设 DEEPSEEK_API_KEY 后要加 --llm 才启用；用 CAMPUS_RAG_API_KEY 会自动启用）")
     print("\n【提示】")
     print("  离线演示： python ask.py --web            （无需网络，必不翻车）")
     print("  联网增强： $env:DEEPSEEK_API_KEY='sk-xxx'; python ask.py --web --llm")

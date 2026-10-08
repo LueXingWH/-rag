@@ -10,18 +10,26 @@
 """
 from __future__ import annotations
 
+import argparse
+import contextlib
+import io
+import os
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import ask  # noqa: E402
 from ask import parse_chat_command  # noqa: E402
 from bench import fact_stats  # noqa: E402
-from campus_rag.config import Config  # noqa: E402
+from campus_rag.config import Config, offline_requested  # noqa: E402
 from campus_rag.engine import Answer  # noqa: E402
 from campus_rag.evaluate import run_eval  # noqa: E402
+from campus_rag.llm import LLMError  # noqa: E402
 from campus_rag.retriever import SYNONYMS, expand_query  # noqa: E402
 from campus_rag.text import tokenize  # noqa: E402
 
@@ -168,6 +176,129 @@ class ChatCommandTest(unittest.TestCase):
         """`:s` 是命令，但以它开头的**问题**不能被吃掉。"""
         for q in (":s 是什么意思", "宿舍 :s 条件", "怎么退出推免申请"):
             self.assertEqual(parse_chat_command(q), "ask", q)
+
+
+class _StubLLM:
+    """替掉 ask.LLMClient：记录"有没有被构造"，并给出假的模型列表。"""
+
+    constructed: list = []
+
+    def __init__(self, *args, **kwargs) -> None:
+        _StubLLM.constructed.append(args)
+
+    def list_models(self):
+        return ["deepseek-flash", "deepseek-v4-pro"]
+
+
+class _BoomLLM(_StubLLM):
+    def list_models(self):
+        raise LLMError("HTTP 401（API key 无效）: invalid api key")
+
+
+class InfoSelfCheckTest(unittest.TestCase):
+    """bug：`--offline` / `CAMPUS_RAG_OFFLINE` 在自检路径上被绕过。
+
+    `--offline` 的帮助写着"强制离线：不调用任何网络接口"，
+    但 cmd_info 只看"有没有 key"，于是 `ask.py --info --offline` 照样去打 /models
+    （实测会连到 api.deepseek.com）。一个"强制离线"的开关被绕过，
+    在断网演示或严格离线环境里会直接打脸。
+
+    同时修掉了另一句误导文案：没配 key 时提示"设置 DEEPSEEK_API_KEY 后自动启用"，
+    而实测**恰好相反**——只设 DEEPSEEK_API_KEY 不加 --llm 是不会启用的
+    （会自动启用的是 CAMPUS_RAG_API_KEY 这个别名）。
+    """
+
+    def setUp(self) -> None:
+        _StubLLM.constructed = []
+        self._real = ask.LLMClient
+
+    def tearDown(self) -> None:
+        ask.LLMClient = self._real
+
+    def _engine(self, api_key: str = "sk-dummy", use_llm: bool = False):
+        cfg = Config()
+        cfg.llm_api_key = api_key
+        cfg.embed_api_key = ""
+        cfg.use_llm = use_llm
+        cfg.use_embeddings = False
+        cfg.corpus_dir = "data/corpus"
+        return SimpleNamespace(cfg=cfg, chunks=[SimpleNamespace(source="08-x.md")])
+
+    def _info(self, engine, **ns) -> str:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ask.cmd_info(engine, argparse.Namespace(**ns))
+        return buf.getvalue()
+
+    def test_offline_flag_skips_network_selfcheck(self) -> None:
+        ask.LLMClient = _StubLLM
+        out = self._info(self._engine(), offline=True)
+        self.assertEqual(_StubLLM.constructed, [], "--offline 下不该构造任何 LLM 客户端")
+        self.assertIn("已跳过", out)
+
+    def test_campus_rag_offline_env_also_skips_network(self) -> None:
+        """环境变量那一路必须和命令行同源，否则它就是个假开关。"""
+        ask.LLMClient = _StubLLM
+        with mock.patch.dict(os.environ, {"CAMPUS_RAG_OFFLINE": "1"}):
+            self.assertTrue(offline_requested())
+            out = self._info(self._engine(), offline=False)
+        self.assertEqual(_StubLLM.constructed, [], "CAMPUS_RAG_OFFLINE=1 下仍去联网了")
+        self.assertIn("已跳过", out)
+
+    def test_selfcheck_still_runs_when_not_offline(self) -> None:
+        """反向断言：别把"离线跳过"修成"自检永远不跑"。"""
+        ask.LLMClient = _StubLLM
+        out = self._info(self._engine(), offline=False)
+        self.assertEqual(len(_StubLLM.constructed), 1)
+        self.assertIn("API 自检: 可用", out)
+
+    def test_selfcheck_failure_is_reported_not_raised(self) -> None:
+        ask.LLMClient = _BoomLLM
+        out = self._info(self._engine(), offline=False)
+        self.assertIn("API 自检: 失败", out)
+
+    def test_missing_key_hint_no_longer_lies(self) -> None:
+        ask.LLMClient = _StubLLM
+        out = self._info(self._engine(api_key=""), offline=False)
+        self.assertIn("加 --llm 才启用", out)
+        self.assertIn("CAMPUS_RAG_API_KEY", out)
+        # 旧文案：设了 DEEPSEEK_API_KEY 就"自动启用"——说反了，不许回来。
+        self.assertNotIn("后自动启用", out)
+
+    def test_key_present_but_llm_off_says_so(self) -> None:
+        """最容易踩的坑：key 设了却没加 --llm，必须明说原因。"""
+        ask.LLMClient = _StubLLM
+        out = self._info(self._engine(api_key="sk-dummy", use_llm=False), offline=False)
+        self.assertIn("加 --llm 即用", out)
+
+
+class OfflineConfigTest(unittest.TestCase):
+    """CAMPUS_RAG_OFFLINE 必须真的关掉联网能力（不只是关掉提示）。"""
+
+    def test_env_offline_disables_llm_and_embeddings(self) -> None:
+        for value in ("1", "true", "TRUE", "yes", "on"):
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "CAMPUS_RAG_OFFLINE": value,
+                    "DEEPSEEK_API_KEY": "sk-dummy",
+                    "SILICONFLOW_API_KEY": "sk-dummy",
+                },
+            ):
+                cfg = Config.from_env()
+                self.assertFalse(cfg.use_llm, value)
+                self.assertFalse(cfg.use_embeddings, value)
+                self.assertTrue(offline_requested(), value)
+
+    def test_not_offline_by_default(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(offline_requested())
+
+    def test_offline_beats_explicit_flag(self) -> None:
+        """环境变量要求离线时，连 --llm 显式开启也不该联网（更保守的一侧胜出）。"""
+        with mock.patch.dict(os.environ, {"CAMPUS_RAG_OFFLINE": "1"}):
+            cfg = Config.from_env(use_llm=True, llm_api_key="sk-dummy")
+            self.assertFalse(cfg.use_llm)
 
 
 if __name__ == "__main__":

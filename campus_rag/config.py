@@ -11,6 +11,22 @@ DEFAULT_CORPUS = PROJECT_ROOT / "data" / "corpus"
 DEFAULT_CACHE = PROJECT_ROOT / ".cache"
 
 
+def _env_flag(name: str) -> bool:
+    """把 "1 / true / yes / on" 这类环境变量当作布尔开关（大小写不敏感）。"""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def offline_requested() -> bool:
+    """环境变量这一路是否要求"不调用任何网络接口"（与命令行 --offline 同义）。
+
+    单独抽出来是因为它必须和 `--offline` 被**同源判断**：
+    原先 from_env 认 CAMPUS_RAG_OFFLINE、而 cmd_info 只认 `--offline`，
+    于是 `CAMPUS_RAG_OFFLINE=1 python ask.py --info` 照样去调 /models——
+    一个"强制离线"的开关，在自检那条路径上被绕过去了。
+    """
+    return _env_flag("CAMPUS_RAG_OFFLINE")
+
+
 @dataclass
 class Config:
     # --- 分块 ---
@@ -62,7 +78,13 @@ class Config:
 
     @classmethod
     def from_env(cls, **overrides: Any) -> "Config":
-        """环境变量 > 默认值；函数参数 > 环境变量。不用 dotenv，少一个依赖。"""
+        """环境变量 > 默认值；函数参数 > 环境变量；**离线开关 > 以上全部**。
+
+        离线是唯一的例外，必须最后生效：它是"不许联网"的安全闸，不是普通配置项。
+        原先它写在 overrides 之前，于是 `CAMPUS_RAG_OFFLINE=1 ... --llm` 会被 --llm 翻掉
+        ——而命令行 `--offline` 却能压住 `--llm`。同一个意图的两种写法结果不同，
+        等于环境变量那一路是个假开关（断网/省流量的场景下会直接联网）。
+        """
         env_map = {
             "llm_base_url": ("CAMPUS_RAG_BASE_URL", "DEEPSEEK_BASE_URL", "OPENAI_BASE_URL"),
             "llm_model": ("CAMPUS_RAG_MODEL", "DEEPSEEK_MODEL", "OPENAI_MODEL"),
@@ -78,11 +100,12 @@ class Config:
                 if os.environ.get(name):
                     values[field_name] = os.environ[name]
                     break
-        if os.environ.get("CAMPUS_RAG_OFFLINE", "").lower() in {"1", "true", "yes"}:
-            values["use_llm"] = False
-            values["use_embeddings"] = False
         values.update({k: v for k, v in overrides.items() if v is not None})
         cfg = cls(**values)
+        # 离线闸最后落：任何来源（命令行 --llm / 显式 override）都不许把它翻回去
+        if offline_requested():
+            cfg.use_llm = False
+            cfg.use_embeddings = False
         # 没配 key 就别去调接口，直接走降级路径（面试现场少一个报错源）
         if not cfg.llm_api_key:
             cfg.use_llm = False
