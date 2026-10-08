@@ -72,6 +72,9 @@ def llm_status_hint(args: argparse.Namespace, cfg: Config, offline: bool) -> str
             # 用户明确要了 LLM 却没拿到，必须出声（否则他只会看到"怎么还是离线"）
             return f"[注意] 你加了 --llm，但大模型没有启用（{reason}），本次回答走离线抽取式。"
         if cfg.llm_api_key and not offline:
+            if getattr(args, "web", False):
+                # Web 端有开关，所以别说"请加 --llm"——用户不必重启服务
+                return "[提示] 检测到大模型 API key，但默认走离线抽取式；页面上的开关可随时打开大模型。"
             # 没要、但明明配了 key：一句提示就能省掉一次排查
             return "[提示] 检测到大模型 API key，但没加 --llm，本次仍走离线抽取式（想用大模型请加 --llm）。"
         return ""
@@ -113,6 +116,14 @@ def build_engine(args: argparse.Namespace) -> RagEngine:
     # 注意：这里必须把 cfg 的生成参数**真的传进去**。原先只传了前四个参数，
     # 于是 config.py 里的 temperature / max_tokens 从来没生效过——
     # 用户在配置里调 max_tokens 想解决"答案被截断"，改了个寂寞。
+    #
+    # 另一个关键点：只要配了 key 就**构造客户端**，而不是只在 use_llm 时才构造。
+    # 因为 Web 界面有"是否使用大模型"开关，而开关必须有个客户端可拨；
+    # 若没加 --llm 就不构造，页面上的开关会是个摆设（拨了也没反应）。
+    # cfg.use_llm 仍然只是"每题的默认值"，由 engine.answer(use_llm=...) 覆盖。
+    can_call_llm = bool(cfg.llm_api_key) and not (
+        bool(getattr(args, "offline", False)) or offline_requested()
+    )
     llm = (
         LLMClient(
             cfg.llm_base_url,
@@ -123,7 +134,7 @@ def build_engine(args: argparse.Namespace) -> RagEngine:
             max_tokens=cfg.max_tokens,
             thinking=cfg.llm_thinking,
         )
-        if cfg.use_llm
+        if can_call_llm
         else None
     )
     embedder = (

@@ -251,8 +251,20 @@ class RagEngine:
         return header + "\n".join(lines)
 
     # ---------------- 主流程 ----------------
-    def answer(self, question: str, top_k: Optional[int] = None) -> Answer:
+    def answer(
+        self,
+        question: str,
+        top_k: Optional[int] = None,
+        use_llm: Optional[bool] = None,
+    ) -> Answer:
+        """回答一个问题。
+
+        use_llm：**本次请求**是否用大模型。None = 用配置里的默认值（cfg.use_llm）。
+        为什么做成参数而不是临时改 cfg：Web 端是 ThreadingHTTPServer，
+        开关状态属于"这一次请求"，改全局配置在并发下会互相串（而且难测）。
+        """
         top_k = top_k or self.cfg.top_k
+        llm_on = self.cfg.use_llm if use_llm is None else bool(use_llm)
         # 只检索一次，但取足够宽的候选集：top_k 块用于"喂给模型"，
         # 更大的 evidence_k 用于"判断有没有证据"和"抽取式回答挑句子"。
         # 为什么摘录也要更宽？实测：答案所在小节可能因为同文档存在近似小节
@@ -279,6 +291,9 @@ class RagEngine:
             "semantic_top": results[0].semantic if results else 0.0,
             "semantic_enabled": self.retriever.semantic_enabled,
             "matched_terms": list(results[0].matched) if results else [],
+            # 这次到底有没有走大模型、是配置默认还是页面开关要求的 —— 诊断"我明明开了"时最需要
+            "llm_requested": llm_on,
+            "llm_available": self.llm is not None,
         }
         trace.update(conf_signals)
 
@@ -306,8 +321,8 @@ class RagEngine:
             for i, r in enumerate(ctx_chunks, start=1)
         )
 
-        # 防线 2/3：LLM 生成，失败即降级
-        if self.llm is not None and self.cfg.use_llm:
+        # 防线 2/3：LLM 生成，失败即降级。用 llm_on（本次请求的开关）而不是 cfg.use_llm
+        if self.llm is not None and llm_on:
             try:
                 res = self.llm.chat(SYSTEM_PROMPT, USER_TEMPLATE.format(context=context, question=question))
                 if res.text:

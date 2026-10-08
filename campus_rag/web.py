@@ -36,34 +36,61 @@ def build_info_payload(engine: RagEngine) -> Dict[str, Any]:
     判断口径也只有 `config.llm_disabled_reason` 这一处（同一个教训见 bug 6）。
     """
     cfg = engine.cfg
+    offline = offline_requested()
     config = cfg.to_dict()
     # 把两个 key 字段整个摘掉：它们在 to_dict 里已被脱敏成 "***"，
     # 浏览器拿不到真值、却会因为"非空"而误判（旧徽章就是这么被骗的）。
     # 命令行 --info 早就不打印这两个字段了，这里与它保持一致。
     for secret in ("llm_api_key", "embed_api_key"):
         config.pop(secret, None)
+    # llm_available：**开关能不能拨**（配了 key 且没被强制离线）。
+    # 与 llm_enabled（现在开着没）是两件事——前端要分别用：
+    # 前者决定开关是否可点，后者决定初始是开还是关。
+    available = bool(cfg.llm_api_key) and not offline
     return {
         "chunks": len(engine.chunks),
         "docs": sorted({c.source for c in engine.chunks}),
         "config": config,
         "semantic_enabled": engine.retriever.semantic_enabled,
-        "llm_enabled": bool(cfg.use_llm),
+        "llm_available": available,
+        "llm_enabled": bool(cfg.use_llm and available),
         "llm_model": cfg.llm_model,
-        "llm_reason": llm_disabled_reason(cfg, offline=offline_requested()),
+        "llm_reason": llm_disabled_reason(cfg, offline=offline),
     }
 
 
-def _build_payload(engine: RagEngine, question: str) -> Dict[str, Any]:
+def _as_bool(value: Any) -> Optional[bool]:
+    """把请求体里的开关解析成 bool；没传 / 认不出来则返回 None（= 用服务端默认）。
+
+    单独抽出来是为了可测：前端传的是 JSON true/false，但手工 curl 或别的脚本
+    很可能传 "true"/"1"/1。认不出来时**不能瞎猜成 False**——那会把"没说要关"
+    变成"明确要求关"，等于悄悄替用户关掉大模型。
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+    return None
+
+
+def _build_payload(engine: RagEngine, question: str, use_llm: Optional[bool] = None) -> Dict[str, Any]:
     started = time.time()
     with _LOCK:  # 纯 Python 检索是 CPU 密集，串行化避免互相抢 GIL 导致延迟抖动
-        ans = engine.answer(question)
+        ans = engine.answer(question, use_llm=use_llm)
     payload = ans.to_dict()
     payload["server_ms"] = int((time.time() - started) * 1000)
     payload["stats"] = {
         "chunks": len(engine.chunks),
         "docs": len({c.source for c in engine.chunks}),
         "answer_threshold": engine.cfg.answer_threshold,
-        "llm": engine.cfg.use_llm,
+        "llm": engine.cfg.use_llm,          # 服务端默认值
+        "llm_used": ans.mode == "llm",      # 这一题实际有没有用上大模型
         "embedding": engine.retriever.semantic_enabled,
         "corpus_dir": engine.cfg.corpus_dir,
     }
@@ -123,8 +150,10 @@ def make_handler(engine: RagEngine):
             if not question:
                 self._send(400, b'{"error":"empty question"}', "application/json")
                 return
+            # 页面上的"是否使用大模型"开关：没传 = 用服务端默认（--llm / CAMPUS_RAG_API_KEY）
+            use_llm = _as_bool(data.get("use_llm"))
             try:
-                payload = _build_payload(engine, question[:500])
+                payload = _build_payload(engine, question[:500], use_llm=use_llm)
             except Exception as e:  # noqa: BLE001 — 任何异常都以 JSON 返回，前端不会白屏
                 self._send(
                     500,
@@ -151,8 +180,17 @@ def serve(engine: RagEngine, host: str = "127.0.0.1", port: int = 8000, open_bro
         raise SystemExit(f"端口 {port}-{port + 19} 都被占用，请用 --port 指定其它端口")
 
     url = f"http://{host}:{port}"
+    info = build_info_payload(engine)
     mode = []
-    mode.append("LLM 生成: " + ("开" if engine.cfg.use_llm else "关（离线抽取式）"))
+    if engine.cfg.use_llm:
+        llm_state = "开"
+    elif info["llm_available"]:
+        # 配了 key 但没加 --llm：以前这里只说"关"，用户不知道还能开；
+        # 现在页面里有开关，所以要把"可以在网页里打开"说出来。
+        llm_state = "关（离线抽取式，网页里可随时打开）"
+    else:
+        llm_state = "关（离线抽取式）"
+    mode.append("LLM 生成: " + llm_state)
     mode.append("语义向量: " + ("开" if engine.retriever.semantic_enabled else "关（BM25+TF-IDF）"))
     print("\n" + "=" * 62)
     print("  校园资料问答助手 - Web Demo 已启动")
@@ -161,6 +199,8 @@ def serve(engine: RagEngine, host: str = "127.0.0.1", port: int = 8000, open_bro
     print(f"  知识块    : {len(engine.chunks)} 块 / {len({c.source for c in engine.chunks})} 篇文档")
     print(f"  运行模式  : {' | '.join(mode)}")
     print(f"  拒答阈值  : {engine.cfg.answer_threshold}")
+    if info["llm_available"]:
+        print("  页面开关  : 输入框上方可切换「大模型生成 / 离线摘录」")
     print("  停止服务  : 在这个黑窗口里按 Ctrl+C，或直接关闭窗口")
     print("=" * 62 + "\n")
     try:

@@ -64,6 +64,19 @@
   .err{color:var(--warn);font-size:12.5px;margin-top:8px}
   .empty{color:var(--dim);text-align:center;padding:40px 12px}
   .foot{color:#5d6884;font-size:11.5px;text-align:center;margin-top:26px}
+  /* 「是否使用大模型」开关：只有配了 key 才可拨 */
+  .llmtoggle{display:flex;align-items:center;gap:9px;margin:0 0 9px;font-size:12.5px;color:var(--dim);flex-wrap:wrap}
+  .llmtoggle .switch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+                     background:#141b2e;border:1px solid var(--line);border-radius:999px;padding:5px 12px 5px 8px;
+                     color:var(--dim);transition:.15s;user-select:none}
+  .llmtoggle .switch .knob{width:28px;height:16px;border-radius:999px;background:#2a3350;position:relative;transition:.15s;flex:0 0 auto}
+  .llmtoggle .switch .knob::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;
+                                  background:#8b97b8;transition:.15s}
+  .llmtoggle .switch.on{border-color:var(--accent);color:#dfe7fb}
+  .llmtoggle .switch.on .knob{background:rgba(122,162,247,.45)}
+  .llmtoggle .switch.on .knob::after{left:14px;background:var(--accent)}
+  .llmtoggle .switch.disabled{opacity:.5;cursor:not-allowed}
+  .llmtoggle .note{color:#5d6884}
 </style>
 </head>
 <body>
@@ -76,6 +89,7 @@
 <main>
   <div class="examples" id="examples"></div>
   <div id="feed"><div class="empty">输入一个问题，或点上面的示例开始 👆</div></div>
+  <div class="llmtoggle" id="llmtoggle"></div>
   <div class="askbar">
     <input type="text" id="q" placeholder="例如：南海校区宿舍晚上几点关门？" autocomplete="off">
     <button id="send">提问</button>
@@ -107,6 +121,7 @@ function withCites(text){
 async function loadBadges(){
   try{
     const r = await fetch("/api/info"); const d = await r.json();
+    applyLlmAvailability(d);
     // 大模型徽章必须看 use_llm（真正的开关），不能看"有没有配 key"：
     // 配了 key 但没加 --llm 时，旧写法会亮绿灯说"开"，而每条回答都是"离线抽取式降级"。
     const llmOn = !!d.llm_enabled;
@@ -121,6 +136,45 @@ async function loadBadges(){
     ];
     $("#badges").innerHTML = b.join("");
   }catch(e){ $("#badges").innerHTML = '<span class="badge off">无法读取 /api/info</span>'; }
+}
+
+/* ── 「是否使用大模型」开关 ──────────────────────────────────────────────
+   llmAvailable：服务端配了 key 且没被强制离线 → 开关可拨；否则禁用并说明原因。
+   useLlm：本次会话每题是否走大模型，随请求发给后端（后端按题生效，不改进程配置）。
+   选择记在 localStorage，刷新后仍在；但若服务端已经没有 key，会被强制关掉。 */
+let llmAvailable = false;
+let llmReason = "";
+let useLlm = false;
+const LS_KEY = "campusrag.use_llm";
+
+function renderLlmToggle(){
+  const box = $("#llmtoggle");
+  const cls = "switch" + (useLlm && llmAvailable ? " on" : "") + (llmAvailable ? "" : " disabled");
+  const state = !llmAvailable ? "不可用" : (useLlm ? "开" : "关");
+  const note = !llmAvailable
+    ? `未配置 API key（或已强制离线）${llmReason? "：" + esc(llmReason):""}`
+    : (useLlm ? "回答由大模型组织，检索结果严格接地" : "只做原文摘录，不调用任何网络接口");
+  box.innerHTML = `
+    <span class="${cls}" id="llmswitch" title="${llmAvailable?'点击切换':'需要先配置 DEEPSEEK_API_KEY'}">
+      <span class="knob"></span>使用大模型：${state}
+    </span>
+    <span class="note">${note}</span>`;
+  const el = $("#llmswitch");
+  if(llmAvailable) el.onclick = () => {
+    useLlm = !useLlm;
+    try{ localStorage.setItem(LS_KEY, useLlm ? "1" : "0"); }catch(e){}
+    renderLlmToggle();
+  };
+}
+
+function applyLlmAvailability(info){
+  llmAvailable = !!info.llm_available;
+  llmReason = info.llm_reason || "";
+  let stored = null;
+  try{ stored = localStorage.getItem(LS_KEY); }catch(e){}
+  // 优先用用户上次的选择；没存过就用服务端的默认（--llm / CAMPUS_RAG_API_KEY）
+  useLlm = llmAvailable ? (stored === null ? !!info.llm_enabled : stored === "1") : false;
+  renderLlmToggle();
 }
 
 function renderCard(q, d){
@@ -160,7 +214,7 @@ async function ask(q){
      <div class="meta"><span class="pill">检索中…</span></div></div>`);
   try{
     const r = await fetch("/api/ask", {method:"POST", headers:{"Content-Type":"application/json"},
-                                       body: JSON.stringify({question:q})});
+                                       body: JSON.stringify({question:q, use_llm: llmAvailable ? useLlm : false})});
     const d = await r.json();
     // 只有"真的没有答案"才算服务端错误。原先只要 payload 里带 error 字段就直接报错，
     // 于是"大模型失败但已降级成抽取式答案"这种情况（答案和引用其实都在）被整条丢掉——

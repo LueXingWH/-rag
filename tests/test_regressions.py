@@ -29,7 +29,7 @@ from bench import fact_stats  # noqa: E402
 from campus_rag.config import Config, llm_disabled_reason, offline_requested  # noqa: E402
 from campus_rag.engine import Answer, RagEngine  # noqa: E402
 from campus_rag.evaluate import run_eval  # noqa: E402
-from campus_rag.llm import LLMError  # noqa: E402
+from campus_rag.llm import LLMError, LLMResult  # noqa: E402
 from campus_rag.retriever import SYNONYMS, expand_query  # noqa: E402
 from campus_rag.text import tokenize  # noqa: E402
 
@@ -564,6 +564,129 @@ def _chunk():
         text="宿舍大门每日 06:00 开；周日至周四 23:00 关门熄灯。迟归须登记。",
         position=0,
     )
+
+
+class LlmToggleTest(unittest.TestCase):
+    """功能：网页里的「是否使用大模型」开关（只在配了 key 时可用）。
+
+    设计约束（都有测试盯住）：
+    ① 开关是**按题**生效的（engine.answer(use_llm=...)），不改进程级配置——
+       Web 是 ThreadingHTTPServer，改全局在并发下会互相串；
+    ② 只要配了 key 就构造 LLMClient，否则没加 --llm 时开关是个摆设；
+    ③ llm_available（能不能拨）与 llm_enabled（现在是开是关）是两件事；
+    ④ 请求里没传 use_llm 时**必须用服务端默认**，不能被解析成 False 悄悄关掉。
+    """
+
+    def _engine_with(self, llm, use_llm_default: bool):
+        cfg = Config()
+        cfg.use_llm = use_llm_default
+        cfg.answer_threshold = 0.0     # 别让闸门拦住，确保走到生成那一步
+        return RagEngine([_chunk()], config=cfg, llm=llm)
+
+    def test_switch_overrides_config_per_request(self) -> None:
+        class _Spy:
+            def __init__(self): self.calls = 0
+            def chat(self, s, u):
+                self.calls += 1
+                return LLMResult(text="模型答案 [1]", mode="llm", model="m", latency_ms=1)
+
+        spy = _Spy()
+        # 服务端默认关，但这一题显式打开
+        engine = self._engine_with(spy, use_llm_default=False)
+        ans_on = engine.answer("宿舍几点关门", use_llm=True)
+        self.assertEqual(ans_on.mode, "llm")
+        self.assertEqual(spy.calls, 1)
+        # 下一题不传 → 回到服务端默认（关），且**不能**因为上一题开过就被记住
+        ans_default = engine.answer("宿舍几点关门")
+        self.assertEqual(ans_default.mode, "extractive")
+        self.assertEqual(spy.calls, 1)
+        # 显式关掉时，即使默认是开也不该调用
+        engine2 = self._engine_with(spy, use_llm_default=True)
+        self.assertEqual(engine2.answer("宿舍几点关门", use_llm=False).mode, "extractive")
+        self.assertEqual(spy.calls, 1)
+
+    def test_trace_records_what_was_asked(self) -> None:
+        class _Boom:
+            def chat(self, s, u): raise LLMError("随便失败一下")
+
+        engine = self._engine_with(_Boom(), use_llm_default=False)
+        trace = engine.answer("宿舍几点关门", use_llm=True).trace
+        self.assertTrue(trace["llm_requested"])      # 页面要了
+        self.assertTrue(trace["llm_available"])      # 客户端在
+        self.assertFalse(engine.answer("宿舍几点关门").trace["llm_requested"])
+
+    def test_info_payload_separates_available_from_enabled(self) -> None:
+        import campus_rag.web as web
+
+        def payload(api_key: str, use_llm: bool):
+            cfg = Config()
+            cfg.llm_api_key = api_key
+            cfg.use_llm = use_llm
+            return web.build_info_payload(SimpleNamespace(
+                cfg=cfg, chunks=[SimpleNamespace(source="a.md")],
+                retriever=SimpleNamespace(semantic_enabled=False)))
+
+        self.assertTrue(payload("sk-x", False)["llm_available"])   # 配了 key → 开关可拨
+        self.assertFalse(payload("sk-x", False)["llm_enabled"])    # 但默认是关的
+        self.assertFalse(payload("", True)["llm_available"])       # 没 key → 开关不可用
+        self.assertFalse(payload("", True)["llm_enabled"])
+
+    def test_offline_makes_switch_unavailable(self) -> None:
+        import campus_rag.web as web
+
+        cfg = Config()
+        cfg.llm_api_key = "sk-x"
+        cfg.use_llm = True
+        engine = SimpleNamespace(cfg=cfg, chunks=[], retriever=SimpleNamespace(semantic_enabled=False))
+        with mock.patch.dict(os.environ, {"CAMPUS_RAG_OFFLINE": "1"}):
+            info = web.build_info_payload(engine)
+        self.assertFalse(info["llm_available"])   # 强制离线时，开关必须点不动
+        self.assertFalse(info["llm_enabled"])
+
+    def test_request_flag_parsing(self) -> None:
+        import campus_rag.web as web
+
+        self.assertIs(web._as_bool(True), True)
+        self.assertIs(web._as_bool(False), False)
+        self.assertIs(web._as_bool("true"), True)
+        self.assertIs(web._as_bool(" off "), False)
+        self.assertIs(web._as_bool(1), True)
+        # 关键：认不出来时返回 None（= 用服务端默认），不能猜成 False 把大模型关掉
+        for junk in (None, "", "maybe", [], {}, "yes please"):
+            self.assertIsNone(web._as_bool(junk), junk)
+
+    def test_client_is_built_whenever_key_exists(self) -> None:
+        """没加 --llm 时也要构造客户端，否则页面开关拨了没反应。"""
+        captured = {}
+
+        class _Capture:
+            def __init__(self, *args, **kwargs):
+                captured["built"] = True
+
+        cfg = Config()
+        cfg.llm_api_key = "sk-dummy"
+        cfg.use_llm = False              # 注意：默认是关的
+        cfg.llm_thinking = "disabled"
+        with mock.patch("ask.LLMClient", _Capture), \
+             mock.patch("ask.Config") as cfg_cls, \
+             mock.patch("ask.load_corpus", return_value=[SimpleNamespace(source="a.md")]), \
+             mock.patch("ask.RagEngine"):
+            cfg_cls.from_env.return_value = cfg
+            cfg_cls.from_env.side_effect = None
+            with contextlib.redirect_stdout(io.StringIO()):
+                ask.build_engine(argparse.Namespace(
+                    corpus="x", top_k=4, chunk_size=480, threshold=0.42, evidence_k=5,
+                    llm=False, embeddings=False, offline=False, model="deepseek-flash",
+                    extractive_chunks=None, info=False, check_llm=False, web=True,
+                ))
+        self.assertTrue(captured.get("built"), "配了 key 就该构造客户端，否则开关是摆设")
+
+    def test_ui_has_the_switch_and_sends_it(self) -> None:
+        ui = (ROOT / "campus_rag" / "ui.html").read_text(encoding="utf-8")
+        self.assertIn('id="llmtoggle"', ui)
+        self.assertIn("llm_available", ui)                  # 开关可用性来自后端
+        self.assertIn("use_llm: llmAvailable ? useLlm : false", ui)   # 每题带上开关
+        self.assertIn("disabled", ui)                       # 不可用时禁用
 
 
 if __name__ == "__main__":
